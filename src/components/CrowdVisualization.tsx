@@ -41,28 +41,21 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.22,
+  minScale = 0.10,
   maxScale = 0.98
 ): number {
   if (canvasHeight <= 0) return minScale;
   const ratio = y / canvasHeight;
   
-  const minY = 0.50;
-  const maxY = 0.82;
-  const midY = 0.68; // Boundary below which perspective shrinks rapidly
+  const horizon = 0.40; // The actual vanishing point of the pitch lines on the screen
+  const maxY = 0.82;    // The foreground limit of the pitch
   
-  if (ratio >= midY) {
-    // Foreground (near the goal area): keep scaling flat and large
-    const t = Math.max(0, Math.min(1, (ratio - midY) / (maxY - midY)));
-    const scaleAtMid = 0.80;
-    return scaleAtMid + t * (maxScale - scaleAtMid);
-  } else {
-    // Background / Mid-field: shrink rapidly towards the horizon
-    const t = Math.max(0, Math.min(1, (ratio - minY) / (midY - minY)));
-    const scaleAtMid = 0.80;
-    const scaleRatio = Math.pow(t, 1.5); // Smooth non-linear depth drop
-    return minScale + scaleRatio * (scaleAtMid - minScale);
-  }
+  if (ratio <= horizon) return minScale;
+  
+  // Linear scale starting from horizon (vanishing point = 0 size, maxY = maxScale size)
+  const t = Math.max(0, Math.min(1, (ratio - horizon) / (maxY - horizon)));
+  
+  return minScale + t * (maxScale - minScale);
 }
 
 export default function CrowdVisualization({
@@ -411,7 +404,7 @@ export default function CrowdVisualization({
     crowdMembersRef.current = [];
 
     // Bounding Box limits (normalized)
-    const minY = 0.50;
+    const minY = 0.42; // Expanded higher up the field
     const maxY = 0.82; // Cut off at the bottom red line
 
     const newMembers: CrowdMember[] = [];
@@ -428,9 +421,11 @@ export default function CrowdVisualization({
         ny = Math.random() * (maxY - minY) + minY;
 
         // 2. Calculate X boundaries based on Y (pitch trapezoid)
+        // At y = 0.42 (minY): x ranges from 0.34 to 0.66
+        // At y = 0.82 (maxY): x ranges from 0.02 to 0.98
         const ratio = (ny - minY) / (maxY - minY);
-        const xMin = 0.30 - ratio * 0.28;
-        const xMax = 0.70 + ratio * 0.28;
+        const xMin = 0.34 - ratio * 0.32;
+        const xMax = 0.66 + ratio * 0.32;
 
         nx = Math.random() * (xMax - xMin) + xMin;
         attempts++;
