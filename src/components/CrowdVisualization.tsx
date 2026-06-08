@@ -41,7 +41,7 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.18,
+  minScale = 0.24,
   maxScale = 0.98
 ): number {
   if (canvasHeight <= 0) return minScale;
