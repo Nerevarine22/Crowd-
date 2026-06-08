@@ -41,21 +41,28 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.12,
-  maxScale = 1.05
+  minScale = 0.22,
+  maxScale = 0.98
 ): number {
   if (canvasHeight <= 0) return minScale;
   const ratio = y / canvasHeight;
   
-  // Map active range [0.50, 0.82] to [0, 1]
   const minY = 0.50;
   const maxY = 0.82;
-  const t = Math.max(0, Math.min(1, (ratio - minY) / (maxY - minY)));
+  const midY = 0.68; // Boundary below which perspective shrinks rapidly
   
-  // Quadratic curve to match the extreme depth perspective of the pitch
-  const scaleRatio = Math.pow(t, 2.0);
-  
-  return minScale + scaleRatio * (maxScale - minScale);
+  if (ratio >= midY) {
+    // Foreground (near the goal area): keep scaling flat and large
+    const t = Math.max(0, Math.min(1, (ratio - midY) / (maxY - midY)));
+    const scaleAtMid = 0.80;
+    return scaleAtMid + t * (maxScale - scaleAtMid);
+  } else {
+    // Background / Mid-field: shrink rapidly towards the horizon
+    const t = Math.max(0, Math.min(1, (ratio - minY) / (midY - minY)));
+    const scaleAtMid = 0.80;
+    const scaleRatio = Math.pow(t, 1.5); // Smooth non-linear depth drop
+    return minScale + scaleRatio * (scaleAtMid - minScale);
+  }
 }
 
 export default function CrowdVisualization({
@@ -201,6 +208,11 @@ export default function CrowdVisualization({
       // 1. Load background image if it exists
       try {
         const bgTexture = await Assets.load('/background.png');
+        if (bgTexture.source) {
+          bgTexture.source.autoGenerateMipmaps = true;
+          bgTexture.source.scaleMode = 'linear';
+          bgTexture.source.style.mipmapMode = 'on';
+        }
         
         // Update aspect ratio state based on the loaded image dimensions
         if (bgTexture.width && bgTexture.height) {
@@ -255,6 +267,11 @@ export default function CrowdVisualization({
       for (const url of spriteUrls) {
         try {
           const tex = await Assets.load(url);
+          if (tex.source) {
+            tex.source.autoGenerateMipmaps = true;
+            tex.source.scaleMode = 'linear';
+            tex.source.style.mipmapMode = 'on';
+          }
           loadedTextures.push(tex);
         } catch (e) {
           console.warn(`Could not load custom sprite ${url}, using silhouettes as fallback`);
