@@ -41,8 +41,8 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.35,
-  maxScale = 0.95
+  minScale = 0.12,
+  maxScale = 1.05
 ): number {
   if (canvasHeight <= 0) return minScale;
   const ratio = y / canvasHeight;
@@ -52,8 +52,8 @@ export function calculatePerspectiveScale(
   const maxY = 0.82;
   const t = Math.max(0, Math.min(1, (ratio - minY) / (maxY - minY)));
   
-  // Linear scaling for smooth, visible perspective sizing
-  const scaleRatio = t;
+  // Quadratic curve to match the extreme depth perspective of the pitch
+  const scaleRatio = Math.pow(t, 2.0);
   
   return minScale + scaleRatio * (maxScale - minScale);
 }
