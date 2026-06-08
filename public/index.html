@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crowd X Lookup</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="lookup-panel" aria-labelledby="page-title">
+        <div class="intro">
+          <p class="eyebrow">Crowd lookup</p>
+          <h1 id="page-title">X profile checker</h1>
+          <p class="hint">Введи username без посилання, наприклад <span>elonmusk</span> або <span>@x</span>.</p>
+        </div>
+
+        <form class="search-form" id="lookup-form">
+          <label for="username">X username</label>
+          <div class="input-row">
+            <span aria-hidden="true">@</span>
+            <input
+              id="username"
+              name="username"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="16"
+              placeholder="username"
+              required
+            />
+            <button type="submit">Перевірити</button>
+          </div>
+        </form>
+
+        <p class="status" id="status" role="status"></p>
+
+        <article class="profile-card" id="profile-card" hidden>
+          <img id="avatar" alt="" width="96" height="96" />
+          <div class="profile-copy">
+            <p class="profile-name" id="profile-name"></p>
+            <p class="profile-handle" id="profile-handle"></p>
+            <dl>
+              <div>
+                <dt>Підписники</dt>
+                <dd id="followers"></dd>
+              </div>
+            </dl>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

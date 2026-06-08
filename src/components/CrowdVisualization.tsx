@@ -19,6 +19,7 @@ interface CrowdMember {
   baseScale: number;   // slight random variation for natural height differences
   characterStyle: number;
   color: string;
+  scaleMultiplier: number;
 }
 
 // Preset color palette for modern, premium crowd aesthetics
@@ -60,6 +61,9 @@ export default function CrowdVisualization({
   const userAvatarSpriteRef = useRef<Sprite | null>(null);
   const userAvatarBorderRef = useRef<Graphics | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  const personTexturesRef = useRef<Texture[]>([]);
+  const backgroundSpriteRef = useRef<Sprite | null>(null);
 
   // Keep track of textures generated to reuse them
   const textureCacheRef = useRef<Map<string, Texture>>(new Map());
@@ -176,50 +180,58 @@ export default function CrowdVisualization({
       pixiAppRef.current = app;
       parent.appendChild(app.canvas);
 
-      // Create static dynamic 3D perspective floor/sky background grid
-      const backgroundGraphics = new Graphics();
-      app.stage.addChild(backgroundGraphics);
+      // 1. Load background image if it exists
+      try {
+        const bgTexture = await Assets.load('/background.png');
+        const bgSprite = new Sprite(bgTexture);
+        bgSprite.width = width;
+        bgSprite.height = height;
+        app.stage.addChildAt(bgSprite, 0);
+        backgroundSpriteRef.current = bgSprite;
+      } catch (e) {
+        console.warn("Failed to load /background.png, using fallback graphic grid", e);
+        
+        // Fallback grid
+        const bgGraphics = new Graphics();
+        app.stage.addChildAt(bgGraphics, 0);
+        
+        const drawGrid = (w: number, h: number) => {
+          bgGraphics.clear();
+          const horizonY = h * 0.42;
+          bgGraphics.rect(0, horizonY, w, h - horizonY).fill({ color: 0x09090b, alpha: 0.85 });
+          const vpX = w / 2;
+          const vpY = horizonY;
+          for (let i = 0; i <= 18; i++) {
+            const xBottom = (i / 18) * w;
+            bgGraphics.moveTo(vpX, vpY).lineTo(xBottom, h).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
+          }
+          for (let i = 0; i <= 12; i++) {
+            const ratio = Math.pow(i / 12, 2);
+            const y = horizonY + ratio * (h - horizonY);
+            bgGraphics.moveTo(0, y).lineTo(w, y).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
+          }
+          bgGraphics.moveTo(0, horizonY).lineTo(w, horizonY).stroke({ width: 2.5, color: 0x3f3f46, alpha: 0.6 });
+        };
+        drawGrid(width, height);
+      }
 
-      const drawPerspectiveGrid = (w: number, h: number) => {
-        backgroundGraphics.clear();
-        
-        const horizonY = h * 0.42;
-        
-        // 1. Draw floor plane
-        backgroundGraphics.rect(0, horizonY, w, h - horizonY)
-          .fill({ color: 0x09090b, alpha: 0.85 }); // zinc-950 dark background
-
-        // 2. Perspective grid lines
-        const vanishingPointX = w / 2;
-        const vanishingPointY = horizonY;
-        const numGridLines = 18;
-        
-        // Draw vertical rays converging at vanishing point
-        for (let i = 0; i <= numGridLines; i++) {
-          const xBottom = (i / numGridLines) * w;
-          backgroundGraphics.moveTo(vanishingPointX, vanishingPointY)
-            .lineTo(xBottom, h)
-            .stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 }); // zinc-800 subtle lines
+      // 2. Pre-load custom people sprites
+      const spriteUrls = [
+        '/person1.png',
+        '/person2.png',
+        '/person3.png',
+        '/person4.png'
+      ];
+      const loadedTextures: Texture[] = [];
+      for (const url of spriteUrls) {
+        try {
+          const tex = await Assets.load(url);
+          loadedTextures.push(tex);
+        } catch (e) {
+          console.warn(`Could not load custom sprite ${url}, using silhouettes as fallback`);
         }
-
-        // Draw horizontal grid lines spacing out exponentially
-        const numHorizLines = 12;
-        for (let i = 0; i <= numHorizLines; i++) {
-          const ratio = Math.pow(i / numHorizLines, 2); // Exponential spacing
-          const y = horizonY + ratio * (h - horizonY);
-          
-          backgroundGraphics.moveTo(0, y)
-            .lineTo(w, y)
-            .stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
-        }
-
-        // Draw glowing horizon separator
-        backgroundGraphics.moveTo(0, horizonY)
-          .lineTo(w, horizonY)
-          .stroke({ width: 2.5, color: 0x3f3f46, alpha: 0.6 });
-      };
-
-      drawPerspectiveGrid(width, height);
+      }
+      personTexturesRef.current = loadedTextures;
 
       // Create crowd container with depth-sorting enabled
       const crowdContainer = new Container();
@@ -227,7 +239,6 @@ export default function CrowdVisualization({
       app.stage.addChild(crowdContainer);
       crowdContainerRef.current = crowdContainer;
 
-      // Make initial populate
       setIsLoaded(true);
     };
 
@@ -244,31 +255,32 @@ export default function CrowdVisualization({
       
       app.renderer.resize(width, height);
 
-      // Redraw perspective background
-      const bg = app.stage.getChildAt(0) as Graphics;
-      if (bg) {
-        // Redraw grid
-        const horizonY = height * 0.42;
-        bg.clear();
-        bg.rect(0, horizonY, width, height - horizonY).fill({ color: 0x09090b, alpha: 0.85 });
-        
-        const vpX = width / 2;
-        const vpY = horizonY;
-        const numGridLines = 18;
-        for (let i = 0; i <= numGridLines; i++) {
-          const xBottom = (i / numGridLines) * width;
-          bg.moveTo(vpX, vpY).lineTo(xBottom, height).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
+      // Resize background
+      if (backgroundSpriteRef.current) {
+        backgroundSpriteRef.current.width = width;
+        backgroundSpriteRef.current.height = height;
+      } else {
+        // Redraw grid on fallback graphics
+        const bg = app.stage.getChildAt(0);
+        if (bg && bg instanceof Graphics) {
+          const horizonY = height * 0.42;
+          bg.clear();
+          bg.rect(0, horizonY, width, height - horizonY).fill({ color: 0x09090b, alpha: 0.85 });
+          const vpX = width / 2;
+          const vpY = horizonY;
+          for (let i = 0; i <= 18; i++) {
+            const xBottom = (i / 18) * width;
+            bg.moveTo(vpX, vpY).lineTo(xBottom, height).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
+          }
+          for (let i = 0; i <= 12; i++) {
+            const ratio = Math.pow(i / 12, 2);
+            const y = horizonY + ratio * (height - horizonY);
+            bg.moveTo(0, y).lineTo(width, y).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
+          }
+          bg.moveTo(0, horizonY).lineTo(width, horizonY).stroke({ width: 2.5, color: 0x3f3f46, alpha: 0.6 });
         }
-        const numHorizLines = 12;
-        for (let i = 0; i <= numHorizLines; i++) {
-          const ratio = Math.pow(i / numHorizLines, 2);
-          const y = horizonY + ratio * (height - horizonY);
-          bg.moveTo(0, y).lineTo(width, y).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
-        }
-        bg.moveTo(0, horizonY).lineTo(width, horizonY).stroke({ width: 2.5, color: 0x3f3f46, alpha: 0.6 });
       }
 
-      // Update positions of all crowd sprites based on new size
       updateAllPositions();
     };
 
@@ -295,7 +307,7 @@ export default function CrowdVisualization({
     crowdMembersRef.current.forEach((member) => {
       const posX = member.normalizedX * width;
       const posY = member.normalizedY * height;
-      const scale = calculatePerspectiveScale(posY, height) * member.baseScale;
+      const scale = calculatePerspectiveScale(posY, height) * member.baseScale * member.scaleMultiplier;
       
       member.sprite.x = posX;
       member.sprite.y = posY;
@@ -347,15 +359,14 @@ export default function CrowdVisualization({
     // Clear existing crowd
     crowdMembersRef.current.forEach((member) => {
       container.removeChild(member.sprite);
-      // Optional: do not destroy cached textures since they are shared
     });
     crowdMembersRef.current = [];
 
     // Bounding Box limits (normalized)
     const minX = 0.04;
     const maxX = 0.96;
-    const minY = 0.44; // floor starts at 0.42
-    const maxY = 0.94;
+    const minY = 0.50; // Adjusted for better placement on background image
+    const maxY = 0.92;
 
     const newMembers: CrowdMember[] = [];
 
@@ -391,11 +402,27 @@ export default function CrowdVisualization({
         }
       }
 
-      // Choose character visual properties
-      const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      const style = Math.floor(Math.random() * 4); // 4 styles
-      
-      const texture = getOrCreatePersonTexture(app, color, style);
+      let texture: Texture;
+      let isCustomSprite = false;
+      let scaleMultiplier = 1.0;
+
+      if (personTexturesRef.current.length > 0) {
+        // Choose one of the custom textures
+        texture = personTexturesRef.current[Math.floor(Math.random() * personTexturesRef.current.length)];
+        isCustomSprite = true;
+        
+        // Normalize height to baseHeight (e.g. 100px) so sprites fit well regardless of raw image resolution
+        const baseHeight = 100;
+        if (texture.height > 0) {
+          scaleMultiplier = baseHeight / texture.height;
+        }
+      } else {
+        // Fallback to silhouette graphics
+        const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+        const style = Math.floor(Math.random() * 4);
+        texture = getOrCreatePersonTexture(app, color, style);
+      }
+
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5, 1.0); // Pivot at bottom-center (feet)
       
@@ -406,8 +433,9 @@ export default function CrowdVisualization({
         normalizedX: nx,
         normalizedY: ny,
         baseScale: 0.88 + Math.random() * 0.24, // natural variation
-        characterStyle: style,
-        color,
+        characterStyle: isCustomSprite ? -1 : 0,
+        color: isCustomSprite ? '#ffffff' : PALETTE[Math.floor(Math.random() * PALETTE.length)],
+        scaleMultiplier
       });
     }
 
