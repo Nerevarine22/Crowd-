@@ -431,7 +431,7 @@ export default function CrowdVisualization({
         attempts++;
 
         // 3. Goal cutout: avoid spawning inside the goal net bounds (absolute constraint)
-        if (nx >= 0.26 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
+        if (nx >= 0.31 && nx <= 0.65 && ny >= 0.70 && ny <= 0.82) {
           continue;
         }
 
@@ -467,7 +467,7 @@ export default function CrowdVisualization({
       }
 
       // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
-      if (nx >= 0.26 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
+      if (nx >= 0.31 && nx <= 0.65 && ny >= 0.70 && ny <= 0.82) {
         ny = Math.random() * (0.69 - minY) + minY; // push behind the goal
       }
 
