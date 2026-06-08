@@ -131,7 +131,7 @@ export default function App() {
               <input
                 type="range"
                 min="0"
-                max="500"
+                max="5000"
                 value={crowdCount}
                 onChange={(e) => setCrowdCount(parseInt(e.target.value))}
                 className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white focus:outline-none"
