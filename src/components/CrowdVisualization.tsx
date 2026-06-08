@@ -199,8 +199,12 @@ export default function CrowdVisualization({
         }
         
         const bgSprite = new Sprite(bgTexture);
-        bgSprite.width = width;
-        bgSprite.height = height;
+        
+        // Fit background using "cover" logic (preserve aspect ratio, center it)
+        const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
+        bgSprite.scale.set(scale);
+        bgSprite.x = (width - bgSprite.width) / 2;
+        bgSprite.y = (height - bgSprite.height) / 2;
         
         app.stage.addChildAt(bgSprite, 0);
         backgroundSpriteRef.current = bgSprite;
@@ -267,10 +271,16 @@ export default function CrowdVisualization({
       const width = app.screen.width;
       const height = app.screen.height;
 
-      // Update background dimensions
+      // Update background dimensions using "cover" logic to preserve aspect ratio
       if (backgroundSpriteRef.current) {
-        backgroundSpriteRef.current.width = width;
-        backgroundSpriteRef.current.height = height;
+        const bgSprite = backgroundSpriteRef.current;
+        const bgTexture = bgSprite.texture;
+        if (bgTexture) {
+          const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
+          bgSprite.scale.set(scale);
+          bgSprite.x = (width - bgSprite.width) / 2;
+          bgSprite.y = (height - bgSprite.height) / 2;
+        }
       } else {
         // Redraw grid on fallback graphics
         const bg = app.stage.getChildAt(0);
@@ -534,7 +544,7 @@ export default function CrowdVisualization({
     <div 
       ref={containerRef} 
       style={{ aspectRatio: aspectRatio ? `${aspectRatio}` : 'auto' }}
-      className={`relative w-full min-h-[350px] bg-gradient-to-b from-[#09090b] via-[#101014] to-[#040406] rounded-[2rem] border border-zinc-800 overflow-hidden shadow-2xl flex flex-col justify-end ${className}`}
+      className={`relative w-full min-h-[200px] bg-gradient-to-b from-[#09090b] via-[#101014] to-[#040406] rounded-[2rem] border border-zinc-800 overflow-hidden shadow-2xl flex flex-col justify-end ${className}`}
     >
       {/* Decorative premium header inside canvas area */}
       <div className="absolute top-6 left-6 right-6 z-20 flex justify-between items-start pointer-events-none select-none">

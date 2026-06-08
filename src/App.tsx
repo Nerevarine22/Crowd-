@@ -157,7 +157,7 @@ export default function App() {
             </div>
 
             {/* PixiJS Crowd Perspective Visualization */}
-            <div className="col-span-1 md:col-span-12 md:row-span-4 min-h-[350px] max-h-[550px] h-auto flex items-center justify-center animate-in fade-in zoom-in-95 duration-300 delay-100">
+            <div className="col-span-1 md:col-span-12 md:row-span-4 min-h-[200px] max-h-[550px] h-auto flex items-center justify-center animate-in fade-in zoom-in-95 duration-300 delay-100">
               <CrowdVisualization 
                 avatarUrl={userData.avatarUrl} 
                 crowdCount={crowdCount} 
