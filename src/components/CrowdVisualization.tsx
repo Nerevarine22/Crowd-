@@ -178,14 +178,28 @@ export default function CrowdVisualization({
       }
 
       pixiAppRef.current = app;
+      
+      // Apply CSS to prevent stretching
+      app.canvas.style.position = 'absolute';
+      app.canvas.style.top = '0';
+      app.canvas.style.left = '0';
+      app.canvas.style.width = '100%';
+      app.canvas.style.height = '100%';
+      app.canvas.style.display = 'block';
+      
       parent.appendChild(app.canvas);
 
       // 1. Load background image if it exists
       try {
         const bgTexture = await Assets.load('/background.png');
         const bgSprite = new Sprite(bgTexture);
-        bgSprite.width = width;
-        bgSprite.height = height;
+        
+        // Fit background using "cover" logic (preserve aspect ratio)
+        const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
+        bgSprite.scale.set(scale);
+        bgSprite.x = (width - bgSprite.width) / 2;
+        bgSprite.y = (height - bgSprite.height) / 2;
+        
         app.stage.addChildAt(bgSprite, 0);
         backgroundSpriteRef.current = bgSprite;
       } catch (e) {
@@ -254,11 +268,21 @@ export default function CrowdVisualization({
       const height = parent.clientHeight;
       
       app.renderer.resize(width, height);
+      
+      // Ensure canvas CSS matches parent
+      app.canvas.style.width = '100%';
+      app.canvas.style.height = '100%';
 
-      // Resize background
+      // Resize background using "cover" logic (preserve aspect ratio)
       if (backgroundSpriteRef.current) {
-        backgroundSpriteRef.current.width = width;
-        backgroundSpriteRef.current.height = height;
+        const bgSprite = backgroundSpriteRef.current;
+        const bgTexture = bgSprite.texture;
+        if (bgTexture) {
+          const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
+          bgSprite.scale.set(scale);
+          bgSprite.x = (width - bgSprite.width) / 2;
+          bgSprite.y = (height - bgSprite.height) / 2;
+        }
       } else {
         // Redraw grid on fallback graphics
         const bg = app.stage.getChildAt(0);
