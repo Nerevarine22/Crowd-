@@ -487,24 +487,24 @@ export default function CrowdVisualization({
     }
 
     const loadAvatar = async () => {
+      if (!avatarUrl) {
+        return;
+      }
+
       let texture: Texture;
       let hasImage = false;
 
-      if (avatarUrl) {
-        try {
-          // Attempt loading external image with CORS support
-          texture = await Assets.load({
-            src: avatarUrl,
-            data: {
-              crossOrigin: 'anonymous',
-            }
-          });
-          hasImage = true;
-        } catch (e) {
-          console.warn("Could not load avatar image via Pixi Assets (CORS/network). Falling back to gold VIP avatar.", e);
-          texture = getVipFallbackTexture(app);
-        }
-      } else {
+      try {
+        // Attempt loading external image with CORS support
+        texture = await Assets.load({
+          src: avatarUrl,
+          data: {
+            crossOrigin: 'anonymous',
+          }
+        });
+        hasImage = true;
+      } catch (e) {
+        console.warn("Could not load avatar image via Pixi Assets (CORS/network). Falling back to gold VIP avatar.", e);
         texture = getVipFallbackTexture(app);
       }
 

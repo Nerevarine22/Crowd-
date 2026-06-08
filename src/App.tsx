@@ -74,98 +74,99 @@ export default function App() {
       </header>
 
       {/* Main Content Grid */}
-      <main className="flex-grow grid grid-cols-1 md:grid-cols-12 md:grid-rows-6 gap-4">
+      <main className="flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         
-        {/* Input Control Card */}
-        <div className={`col-span-1 ${userData ? 'md:col-span-5 md:row-span-2' : 'md:col-span-12 md:row-span-6'} bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 text-center md:text-left md:p-8 flex flex-col justify-center gap-4 transition-all duration-500`}>
-          {!userData && (
-            <div className="mb-4">
+        {/* Left Column: Search & Stats */}
+        <div className="lg:col-span-5 flex flex-col gap-6">
+          
+          {/* Input Control Card */}
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 md:p-8 flex flex-col justify-center gap-4">
+            <div>
               <h2 className="text-2xl font-bold text-white tracking-tight mb-2">Пошук X профілю</h2>
               <p className="text-zinc-400 text-sm">Введіть username щоб отримати кількість підписників та фото</p>
             </div>
-          )}
-          
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <label className="text-sm uppercase tracking-widest text-zinc-500 font-semibold text-left">Query Target</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-xl font-medium">@</span>
+            
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <label className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">Query Target</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-xl font-medium">@</span>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="elonmusk"
+                  className="w-full bg-black border border-zinc-700 rounded-2xl py-4 pl-10 pr-4 text-xl focus:ring-2 focus:ring-white outline-none transition-all disabled:opacity-50"
+                  disabled={isLoading}
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={isLoading || !username.trim()}
+                className="w-full bg-white text-black font-bold py-4 rounded-2xl text-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100 flex justify-center items-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  'Fetch Profile Data'
+                )}
+              </button>
+            </form>
+
+            {error && (
+              <div className="p-4 bg-red-950/50 border border-red-900/50 rounded-xl flex items-start gap-3 mt-2 text-left">
+                <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-red-200">{error}</p>
+              </div>
+            )}
+
+            {/* Always visible slider control */}
+            <div className="mt-2 pt-4 border-t border-zinc-800/80">
+              <div className="flex justify-between text-xs text-zinc-400 mb-2">
+                <span>Масштабований натовп:</span>
+                <span className="font-mono text-[#ffd700] font-bold">{crowdCount} осіб</span>
+              </div>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="elonmusk"
-                className="w-full bg-black border border-zinc-700 rounded-2xl py-4 pl-10 pr-4 text-xl focus:ring-2 focus:ring-white outline-none transition-all disabled:opacity-50"
-                disabled={isLoading}
+                type="range"
+                min="0"
+                max="500"
+                value={crowdCount}
+                onChange={(e) => setCrowdCount(parseInt(e.target.value))}
+                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white focus:outline-none"
               />
             </div>
-            <button 
-              type="submit"
-              disabled={isLoading || !username.trim()}
-              className="w-full bg-white text-black font-bold py-4 rounded-2xl text-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100 flex justify-center items-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Fetching...
-                </>
-              ) : (
-                'Fetch Profile Data'
-              )}
-            </button>
-          </form>
+          </div>
 
-          {error && (
-            <div className="p-4 bg-red-950/50 border border-red-900/50 rounded-xl flex items-start gap-3 mt-2 text-left">
-              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-red-200">{error}</p>
-            </div>
-          )}
-        </div>
-
-        {userData && (
-          <>
-            {/* Follower Count Card */}
-            <div className="col-span-1 md:col-span-7 md:row-span-2 bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 md:p-8 flex flex-col justify-between animate-in fade-in zoom-in-95 duration-300">
+          {/* Follower Count Card (only shown when userData is available) */}
+          {userData && (
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 md:p-8 flex flex-col justify-between animate-in fade-in slide-in-from-bottom-5 duration-350">
               <div className="flex justify-between items-start mb-4">
                 <span className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">Follower Audience</span>
                 <Users className="w-6 h-6 text-zinc-600" />
               </div>
               <div className="flex items-baseline gap-4 mb-2 mt-auto">
-                <span className="text-6xl lg:text-8xl font-black tracking-tighter truncate">
+                <span className="text-5xl font-black tracking-tighter truncate text-white">
                   {new Intl.NumberFormat('en-US', { notation: 'compact', compactDisplay: 'short' }).format(userData.followersCount || 0)}
                 </span>
-                <span className="hidden md:inline-block text-2xl md:text-3xl lg:text-4xl font-medium text-zinc-500">
+                <span className="text-xl font-medium text-zinc-500">
                   ({new Intl.NumberFormat('uk-UA').format(userData.followersCount || 0)})
                 </span>
               </div>
-              <p className="text-zinc-500 text-sm mt-1 mb-4">Real-time snapshot for @{username.replace(/^@/, '')}</p>
-              
-              <div className="mt-auto pt-4 border-t border-zinc-800/80">
-                <div className="flex justify-between text-xs text-zinc-400 mb-2">
-                  <span>Масштабований натовп:</span>
-                  <span className="font-mono text-[#ffd700] font-bold">{crowdCount} осіб</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="500"
-                  value={crowdCount}
-                  onChange={(e) => setCrowdCount(parseInt(e.target.value))}
-                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white focus:outline-none"
-                />
-              </div>
+              <p className="text-zinc-500 text-sm mt-1">Real-time snapshot for @{username.replace(/^@/, '')}</p>
             </div>
+          )}
+        </div>
 
-            {/* PixiJS Crowd Perspective Visualization */}
-            <div className="col-span-1 md:col-span-12 md:row-span-4 min-h-[200px] max-h-[550px] h-auto flex items-center justify-center animate-in fade-in zoom-in-95 duration-300 delay-100">
-              <CrowdVisualization 
-                avatarUrl={userData.avatarUrl} 
-                crowdCount={crowdCount} 
-                className="w-full max-h-[550px] h-auto"
-              />
-            </div>
-          </>
-        )}
+        {/* Right Column: PixiJS Crowd Perspective Visualization (Always Visible) */}
+        <div className="lg:col-span-7 flex flex-col justify-center min-h-[400px] h-full">
+          <CrowdVisualization 
+            avatarUrl={userData?.avatarUrl} 
+            crowdCount={crowdCount} 
+            className="flex-grow w-full h-auto"
+          />
+        </div>
 
       </main>
 
