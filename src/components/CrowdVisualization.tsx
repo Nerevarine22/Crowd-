@@ -421,11 +421,11 @@ export default function CrowdVisualization({
         ny = Math.random() * (maxY - minY) + minY;
 
         // 2. Calculate X boundaries based on Y (wider pitch trapezoid to fill sides to the stands)
-        // Uses a power curve (ratio^0.7) to match the curved stadium stands
+        // Uses a power curve (ratio^0.6) to match the curved stadium stands
         const ratio = (ny - minY) / (maxY - minY);
-        const curveRatio = Math.pow(ratio, 0.7);
-        const xMin = 0.30 - curveRatio * 0.30;
-        const xMax = 0.70 + curveRatio * 0.30;
+        const curveRatio = Math.pow(ratio, 0.6);
+        const xMin = 0.26 - curveRatio * 0.26;
+        const xMax = 0.74 + curveRatio * 0.26;
 
         nx = Math.random() * (xMax - xMin) + xMin;
         attempts++;
