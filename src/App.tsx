@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Search, Users, AlertCircle, Loader2 } from 'lucide-react';
+import CrowdVisualization from './components/CrowdVisualization';
 
 export default function App() {
   const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [crowdCount, setCrowdCount] = useState(100);
   
   const [userData, setUserData] = useState<{
     followersCount: number;
@@ -44,6 +46,8 @@ export default function App() {
         followersCount: data.followersCount,
         avatarUrl: data.avatarUrl,
       });
+      const mappedCount = Math.min(Math.max(15, Math.floor(Math.log10((data.followersCount || 0) + 1) * 35)), 350);
+      setCrowdCount(mappedCount);
     } catch (err: any) {
       setError(err.message || 'Сталася помилка. Перевірте нікнейм.');
     } finally {
@@ -126,7 +130,7 @@ export default function App() {
                 <span className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">Follower Audience</span>
                 <Users className="w-6 h-6 text-zinc-600" />
               </div>
-              <div className="flex items-baseline gap-4 mb-4 md:mb-0 mt-auto">
+              <div className="flex items-baseline gap-4 mb-2 mt-auto">
                 <span className="text-6xl lg:text-8xl font-black tracking-tighter truncate">
                   {new Intl.NumberFormat('en-US', { notation: 'compact', compactDisplay: 'short' }).format(userData.followersCount || 0)}
                 </span>
@@ -134,40 +138,30 @@ export default function App() {
                   ({new Intl.NumberFormat('uk-UA').format(userData.followersCount || 0)})
                 </span>
               </div>
-              <p className="text-zinc-500 text-sm mt-auto">Real-time snapshot for @{username.replace(/^@/, '')}</p>
+              <p className="text-zinc-500 text-sm mt-1 mb-4">Real-time snapshot for @{username.replace(/^@/, '')}</p>
+              
+              <div className="mt-auto pt-4 border-t border-zinc-800/80">
+                <div className="flex justify-between text-xs text-zinc-400 mb-2">
+                  <span>Масштабований натовп:</span>
+                  <span className="font-mono text-[#ffd700] font-bold">{crowdCount} осіб</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="500"
+                  value={crowdCount}
+                  onChange={(e) => setCrowdCount(parseInt(e.target.value))}
+                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white focus:outline-none"
+                />
+              </div>
             </div>
 
-            {/* Avatar Display Card (Large) */}
-            <div className="col-span-1 md:col-span-12 md:row-span-4 bg-zinc-900 border border-zinc-800 rounded-[2rem] overflow-hidden relative min-h-[300px] animate-in fade-in zoom-in-95 duration-300 delay-100">
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent z-10"></div>
-              
-              <div className="w-full h-full flex items-center justify-center bg-zinc-800 p-8">
-                <div className="w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 rounded-full border-8 border-black shadow-2xl overflow-hidden relative">
-                  {userData.avatarUrl ? (
-                    <img 
-                      src={userData.avatarUrl.replace('_normal', '_400x400')} 
-                      alt="Profile Avatar" 
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = userData.avatarUrl;
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-zinc-700 flex items-center justify-center">
-                      <Users className="w-20 h-20 md:w-40 md:h-40 text-zinc-600" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 ring-1 ring-inset ring-white/20 rounded-full pointer-events-none"></div>
-                </div>
-              </div>
-
-              <div className="absolute bottom-6 left-6 md:bottom-8 md:left-8 z-20">
-                <h2 className="text-3xl md:text-4xl font-bold truncate max-w-[80vw] md:max-w-xl">@{username.replace(/^@/, '')}</h2>
-                <p className="text-zinc-400 text-base md:text-lg">Профіль знайдено</p>
-              </div>
-              <div className="absolute top-6 right-6 md:top-8 md:right-8 z-20 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 hidden sm:block">
-                <span className="text-xs font-bold uppercase">Verified Source</span>
-              </div>
+            {/* PixiJS Crowd Perspective Visualization */}
+            <div className="col-span-1 md:col-span-12 md:row-span-4 h-[450px] animate-in fade-in zoom-in-95 duration-300 delay-100">
+              <CrowdVisualization 
+                avatarUrl={userData.avatarUrl} 
+                crowdCount={crowdCount} 
+              />
             </div>
           </>
         )}

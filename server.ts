@@ -23,25 +23,13 @@ async function startServer() {
         return res.status(400).json({ error: 'Username is required' });
       }
 
-      // Prepare the actor input
-      const input = {
-        "twitterHandles": [username],
-        "maxItems": 1
-      };
-
-      // Ensure we use the correct Apify actor. 
-      // "quacker/twitter-api-scraper" or "user~twitter-profile-scraper" depending on what works.
-      // We will try microrworlds/twitter-scraper or quacker/twitter-api-scraper or apidojo/twitter-user-scraper.
-      // Usually "quacker/twitter-api-scraper" is the most robust and requires searchMode: "user".
-      // Let's use `apidojo/twitter-user-scraper` as it's specifically for users and very popular.
-      // Actually, quacker/twitter-api-scraper is best. Let's try it with just handles.
-      
+      // Prepare the actor input with usernames parameter
       const actorInput = {
         usernames: [username],
       };
 
+      // Run the Apify twitter profile scraper
       const run = await client.actor("dead00/twitter-profile-scraper-no-cookies").call(actorInput);
-      
       const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
       if (!items || items.length === 0) {
@@ -50,18 +38,17 @@ async function startServer() {
 
       const userProfile = items[0] as any;
       
-      // If error or uncharged
       if (!userProfile.success) {
         return res.status(404).json({ error: 'Failed to scrape user data.' });
       }
       
+      // Select only followers count and profile photo
       const followersCount = userProfile.followers_count || 0;
       const avatarUrl = userProfile.profile_image_url || '';
 
       res.json({
         followersCount,
-        avatarUrl,
-        raw: items[0] // for debugging if needed, we won't show to user
+        avatarUrl
       });
     } catch (error: any) {
       console.error('Error fetching twitter info:', error);
