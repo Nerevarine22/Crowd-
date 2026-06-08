@@ -41,7 +41,7 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.10,
+  minScale = 0.18,
   maxScale = 0.98
 ): number {
   if (canvasHeight <= 0) return minScale;
@@ -420,18 +420,18 @@ export default function CrowdVisualization({
         // 1. Generate Y coordinate first
         ny = Math.random() * (maxY - minY) + minY;
 
-        // 2. Calculate X boundaries based on Y (pitch trapezoid)
-        // At y = 0.42 (minY): x ranges from 0.34 to 0.66
-        // At y = 0.82 (maxY): x ranges from 0.02 to 0.98
+        // 2. Calculate X boundaries based on Y (wider pitch trapezoid)
+        // At y = 0.42 (minY): x ranges from 0.28 to 0.72
+        // At y = 0.82 (maxY): x ranges from 0.00 to 1.00
         const ratio = (ny - minY) / (maxY - minY);
-        const xMin = 0.34 - ratio * 0.32;
-        const xMax = 0.66 + ratio * 0.32;
+        const xMin = 0.28 - ratio * 0.28;
+        const xMax = 0.72 + ratio * 0.28;
 
         nx = Math.random() * (xMax - xMin) + xMin;
         attempts++;
 
         // 3. Goal cutout: avoid spawning inside the red goal area outline (absolute constraint)
-        if (nx >= 0.31 && nx <= 0.61 && ny > 0.67) {
+        if (nx >= 0.29 && nx <= 0.63 && ny > 0.67) {
           continue;
         }
 
@@ -467,7 +467,7 @@ export default function CrowdVisualization({
       }
 
       // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
-      if (nx >= 0.31 && nx <= 0.61 && ny > 0.67) {
+      if (nx >= 0.29 && nx <= 0.63 && ny > 0.67) {
         ny = Math.random() * (0.66 - minY) + minY; // push into the upper half of the pitch
       }
 
