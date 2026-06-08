@@ -430,8 +430,8 @@ export default function CrowdVisualization({
         nx = Math.random() * (xMax - xMin) + xMin;
         attempts++;
 
-        // 3. Goal cutout: avoid spawning inside the red goal area outline (absolute constraint)
-        if (nx >= 0.29 && nx <= 0.63 && ny > 0.67) {
+        // 3. Goal cutout: avoid spawning inside the goal net bounds (absolute constraint)
+        if (nx >= 0.30 && nx <= 0.60 && ny >= 0.72 && ny <= 0.815) {
           continue;
         }
 
@@ -467,8 +467,8 @@ export default function CrowdVisualization({
       }
 
       // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
-      if (nx >= 0.29 && nx <= 0.63 && ny > 0.67) {
-        ny = Math.random() * (0.66 - minY) + minY; // push into the upper half of the pitch
+      if (nx >= 0.30 && nx <= 0.60 && ny >= 0.72 && ny <= 0.815) {
+        ny = Math.random() * (0.71 - minY) + minY; // push behind the goal
       }
 
       let texture: Texture;
