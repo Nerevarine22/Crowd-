@@ -41,8 +41,8 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.12,
-  maxScale = 1.0
+  minScale = 0.22,
+  maxScale = 0.95
 ): number {
   if (canvasHeight <= 0) return minScale;
   const ratio = y / canvasHeight;
@@ -52,8 +52,8 @@ export function calculatePerspectiveScale(
   const maxY = 0.82;
   const t = Math.max(0, Math.min(1, (ratio - minY) / (maxY - minY)));
   
-  // Non-linear power curve to make characters shrink faster in the distance
-  const scaleRatio = Math.pow(t, 1.3);
+  // Non-linear curve to make scaling smooth but distinct
+  const scaleRatio = Math.pow(t, 1.2);
   
   return minScale + scaleRatio * (maxScale - minScale);
 }
@@ -411,8 +411,6 @@ export default function CrowdVisualization({
         ny = Math.random() * (maxY - minY) + minY;
 
         // 2. Calculate X boundaries based on Y (pitch trapezoid)
-        // At y = 0.50 (minY): x ranges from 0.30 to 0.70
-        // At y = 0.82 (maxY): x ranges from 0.02 to 0.98
         const ratio = (ny - minY) / (maxY - minY);
         const xMin = 0.30 - ratio * 0.28;
         const xMax = 0.70 + ratio * 0.28;
@@ -420,37 +418,45 @@ export default function CrowdVisualization({
         nx = Math.random() * (xMax - xMin) + xMin;
         attempts++;
 
-        isValid = true;
-
-        // 3. Goal cutout: avoid spawning inside the red goal area outline
+        // 3. Goal cutout: avoid spawning inside the red goal area outline (absolute constraint)
         if (nx >= 0.35 && nx <= 0.65 && ny > 0.68) {
-          isValid = false;
           continue;
         }
 
-        // Avoid spawning right on top of the central user avatar space if avatar is active
+        // Avoid spawning right on top of the central user avatar space if avatar is active (absolute constraint)
         if (avatarUrl) {
           const distToCenter = Math.sqrt(Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.76, 2));
           if (distToCenter < 0.10) {
-            isValid = false;
             continue;
           }
         }
 
-        // Avoid spawning too close to peers, scaling the distance based on perspective depth
-        const depthFactor = (ny - minY) / (maxY - minY); // 0 (far) to 1 (close)
-        const minDx = 0.012 + depthFactor * 0.038;
-        const minDy = 0.010 + depthFactor * 0.028;
+        // Avoid spawning too close to peers (soft constraint - relaxed after 80 attempts to allow packing)
+        let hasCollision = false;
+        if (attempts < 80) {
+          const depthFactor = (ny - minY) / (maxY - minY);
+          const minDx = 0.012 + depthFactor * 0.038;
+          const minDy = 0.010 + depthFactor * 0.028;
 
-        for (const existing of newMembers) {
-          const dx = Math.abs(nx - existing.normalizedX);
-          const dy = Math.abs(ny - existing.normalizedY);
+          for (const existing of newMembers) {
+            const dx = Math.abs(nx - existing.normalizedX);
+            const dy = Math.abs(ny - existing.normalizedY);
 
-          if (dy < minDy && dx < minDx) {
-            isValid = false;
-            break;
+            if (dy < minDy && dx < minDx) {
+              hasCollision = true;
+              break;
+            }
           }
         }
+
+        if (!hasCollision) {
+          isValid = true;
+        }
+      }
+
+      // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
+      if (nx >= 0.35 && nx <= 0.65 && ny > 0.68) {
+        ny = Math.random() * (0.67 - minY) + minY; // push into the upper half of the pitch
       }
 
       let texture: Texture;
