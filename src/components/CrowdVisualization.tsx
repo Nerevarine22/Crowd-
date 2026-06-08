@@ -41,12 +41,21 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.25,
-  maxScale = 1.1
+  minScale = 0.12,
+  maxScale = 1.0
 ): number {
   if (canvasHeight <= 0) return minScale;
   const ratio = y / canvasHeight;
-  return minScale + ratio * (maxScale - minScale);
+  
+  // Map active range [0.50, 0.82] to [0, 1]
+  const minY = 0.50;
+  const maxY = 0.82;
+  const t = Math.max(0, Math.min(1, (ratio - minY) / (maxY - minY)));
+  
+  // Non-linear power curve to make characters shrink faster in the distance
+  const scaleRatio = Math.pow(t, 1.3);
+  
+  return minScale + scaleRatio * (maxScale - minScale);
 }
 
 export default function CrowdVisualization({
@@ -385,10 +394,8 @@ export default function CrowdVisualization({
     crowdMembersRef.current = [];
 
     // Bounding Box limits (normalized)
-    const minX = 0.04;
-    const maxX = 0.96;
-    const minY = 0.50; // Adjusted for better placement on background image
-    const maxY = 0.92;
+    const minY = 0.50;
+    const maxY = 0.82; // Cut off at the bottom red line
 
     const newMembers: CrowdMember[] = [];
 
@@ -399,25 +406,47 @@ export default function CrowdVisualization({
       let ny = 0.7;
       let isValid = false;
 
-      while (!isValid && attempts < 80) {
-        nx = Math.random() * (maxX - minX) + minX;
+      while (!isValid && attempts < 150) {
+        // 1. Generate Y coordinate first
         ny = Math.random() * (maxY - minY) + minY;
+
+        // 2. Calculate X boundaries based on Y (pitch trapezoid)
+        // At y = 0.50 (minY): x ranges from 0.30 to 0.70
+        // At y = 0.82 (maxY): x ranges from 0.02 to 0.98
+        const ratio = (ny - minY) / (maxY - minY);
+        const xMin = 0.30 - ratio * 0.28;
+        const xMax = 0.70 + ratio * 0.28;
+
+        nx = Math.random() * (xMax - xMin) + xMin;
         attempts++;
 
         isValid = true;
-        // Avoid spawning right on top of the central user avatar space (x: ~0.45-0.55, y: ~0.7-0.82)
-        const distToCenter = Math.sqrt(Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.76, 2));
-        if (distToCenter < 0.12) {
+
+        // 3. Goal cutout: avoid spawning inside the red goal area outline
+        if (nx >= 0.35 && nx <= 0.65 && ny > 0.68) {
           isValid = false;
           continue;
         }
 
-        // Avoid spawning too close horizontally to peers at same depth
+        // Avoid spawning right on top of the central user avatar space if avatar is active
+        if (avatarUrl) {
+          const distToCenter = Math.sqrt(Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.76, 2));
+          if (distToCenter < 0.10) {
+            isValid = false;
+            continue;
+          }
+        }
+
+        // Avoid spawning too close to peers, scaling the distance based on perspective depth
+        const depthFactor = (ny - minY) / (maxY - minY); // 0 (far) to 1 (close)
+        const minDx = 0.012 + depthFactor * 0.038;
+        const minDy = 0.010 + depthFactor * 0.028;
+
         for (const existing of newMembers) {
           const dx = Math.abs(nx - existing.normalizedX);
           const dy = Math.abs(ny - existing.normalizedY);
 
-          if (dy < 0.038 && dx < 0.05) {
+          if (dy < minDy && dx < minDx) {
             isValid = false;
             break;
           }
