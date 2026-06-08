@@ -41,7 +41,7 @@ const PALETTE = [
 export function calculatePerspectiveScale(
   y: number,
   canvasHeight: number,
-  minScale = 0.22,
+  minScale = 0.35,
   maxScale = 0.95
 ): number {
   if (canvasHeight <= 0) return minScale;
@@ -52,8 +52,8 @@ export function calculatePerspectiveScale(
   const maxY = 0.82;
   const t = Math.max(0, Math.min(1, (ratio - minY) / (maxY - minY)));
   
-  // Non-linear curve to make scaling smooth but distinct
-  const scaleRatio = Math.pow(t, 1.2);
+  // Linear scaling for smooth, visible perspective sizing
+  const scaleRatio = t;
   
   return minScale + scaleRatio * (maxScale - minScale);
 }
@@ -419,7 +419,7 @@ export default function CrowdVisualization({
         attempts++;
 
         // 3. Goal cutout: avoid spawning inside the red goal area outline (absolute constraint)
-        if (nx >= 0.35 && nx <= 0.65 && ny > 0.68) {
+        if (nx >= 0.31 && nx <= 0.61 && ny > 0.67) {
           continue;
         }
 
@@ -455,8 +455,8 @@ export default function CrowdVisualization({
       }
 
       // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
-      if (nx >= 0.35 && nx <= 0.65 && ny > 0.68) {
-        ny = Math.random() * (0.67 - minY) + minY; // push into the upper half of the pitch
+      if (nx >= 0.31 && nx <= 0.61 && ny > 0.67) {
+        ny = Math.random() * (0.66 - minY) + minY; // push into the upper half of the pitch
       }
 
       let texture: Texture;
