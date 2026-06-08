@@ -58,6 +58,22 @@ export function calculatePerspectiveScale(
   return minScale + t * (maxScale - minScale);
 }
 
+/**
+ * Checks if a point is inside a polygon using the Ray-Casting algorithm.
+ */
+function isPointInPolygon(point: { x: number; y: number }, polygon: { x: number; y: number }[]): boolean {
+  const x = point.x, y = point.y;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersect = ((yi > y) !== (yj > y))
+        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 export default function CrowdVisualization({
   avatarUrl,
   crowdCount,
@@ -77,6 +93,40 @@ export default function CrowdVisualization({
 
   // Keep track of textures generated to reuse them
   const textureCacheRef = useRef<Map<string, Texture>>(new Map());
+
+  // Interactive spawn zone polygon drawing states
+  const [customPolygon, setCustomPolygon] = useState<{ x: number; y: number }[] | null>(null);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 450 });
+
+  // Load custom polygon on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('crowd_spawn_polygon');
+      if (saved) {
+        setCustomPolygon(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn("Failed to load saved spawn polygon from localStorage", e);
+    }
+  }, []);
+
+  // Sync canvas size dimensions for SVG overlay scaling
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        setDimensions({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+        });
+      }
+    };
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, [isLoaded]);
 
   /**
    * Generates a stylized person silhouette texture using Pixi Graphics
@@ -254,7 +304,12 @@ export default function CrowdVisualization({
         '/person1.png',
         '/person2.png',
         '/person3.png',
-        '/person4.png'
+        '/person4.png',
+        '/person5.png',
+        '/person6.png',
+        '/person7.png',
+        '/person8.png',
+        '/person9.png'
       ];
       const loadedTextures: Texture[] = [];
       for (const url of spriteUrls) {
@@ -404,8 +459,14 @@ export default function CrowdVisualization({
     crowdMembersRef.current = [];
 
     // Bounding Box limits (normalized)
-    const minY = 0.42; // Expanded higher up the field
-    const maxY = 0.82; // Cut off at the bottom red line
+    let minY = 0.42;
+    let maxY = 0.82;
+    
+    // If a custom polygon is active, calculate its vertical bounding box
+    if (customPolygon && customPolygon.length >= 3) {
+      minY = Math.min(...customPolygon.map(p => p.y));
+      maxY = Math.max(...customPolygon.map(p => p.y));
+    }
 
     const newMembers: CrowdMember[] = [];
 
@@ -416,22 +477,34 @@ export default function CrowdVisualization({
       let ny = 0.7;
       let isValid = false;
 
-      while (!isValid && attempts < 150) {
+      while (!isValid && attempts < 250) {
         // 1. Generate Y coordinate first
         ny = Math.random() * (maxY - minY) + minY;
 
-        // 2. Calculate X boundaries based on Y (wider pitch trapezoid to fill sides to the stands)
-        // Uses a power curve (ratio^0.6) to match the curved stadium stands
-        const ratio = (ny - minY) / (maxY - minY);
-        const curveRatio = Math.pow(ratio, 0.6);
-        const xMin = 0.26 - curveRatio * 0.26;
-        const xMax = 0.74 + curveRatio * 0.26;
-
-        nx = Math.random() * (xMax - xMin) + xMin;
+        // 2. Generate X coordinate
+        if (customPolygon && customPolygon.length >= 3) {
+          nx = Math.random(); // random x across screen
+          
+          // Check if (nx, ny) is inside the custom polygon
+          if (!isPointInPolygon({ x: nx, y: ny }, customPolygon)) {
+            attempts++;
+            continue;
+          }
+        } else {
+          // Default pitch trapezoid
+          const ratio = (ny - minY) / (maxY - minY);
+          const curveRatio = Math.pow(ratio, 0.6);
+          const xMin = 0.26 - curveRatio * 0.26;
+          const xMax = 0.74 + curveRatio * 0.26;
+          nx = Math.random() * (xMax - xMin) + xMin;
+        }
         attempts++;
 
+        isValid = true;
+
         // 3. Goal cutout: avoid spawning inside the goal net bounds (absolute constraint)
-        if (nx >= 0.31 && nx <= 0.65 && ny >= 0.70 && ny <= 0.82) {
+        if (nx >= 0.26 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
+          isValid = false;
           continue;
         }
 
@@ -439,6 +512,7 @@ export default function CrowdVisualization({
         if (avatarUrl) {
           const distToCenter = Math.sqrt(Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.76, 2));
           if (distToCenter < 0.10) {
+            isValid = false;
             continue;
           }
         }
@@ -446,7 +520,10 @@ export default function CrowdVisualization({
         // Avoid spawning too close to peers (soft constraint - relaxed after 80 attempts to allow packing)
         let hasCollision = false;
         if (attempts < 80) {
-          const depthFactor = (ny - minY) / (maxY - minY);
+          // Compute depthFactor relative to full grass height for consistent scaling of collisions
+          const fullMinY = 0.42;
+          const fullMaxY = 0.82;
+          const depthFactor = (ny - fullMinY) / (fullMaxY - fullMinY);
           const minDx = 0.012 + depthFactor * 0.038;
           const minDy = 0.010 + depthFactor * 0.028;
 
@@ -467,7 +544,7 @@ export default function CrowdVisualization({
       }
 
       // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
-      if (nx >= 0.31 && nx <= 0.65 && ny >= 0.70 && ny <= 0.82) {
+      if (nx >= 0.26 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
         ny = Math.random() * (0.69 - minY) + minY; // push behind the goal
       }
 
@@ -510,7 +587,7 @@ export default function CrowdVisualization({
 
     crowdMembersRef.current = newMembers;
     updateAllPositions();
-  }, [crowdCount, isLoaded]);
+  }, [crowdCount, isLoaded, customPolygon]);
 
   /**
    * Side effect: load and display user avatar when avatarUrl changes
@@ -593,16 +670,166 @@ export default function CrowdVisualization({
       style={{ aspectRatio: aspectRatio ? `${aspectRatio}` : 'auto' }}
       className={`relative w-full min-h-[200px] bg-gradient-to-b from-[#09090b] via-[#101014] to-[#040406] rounded-[2rem] border border-zinc-800 overflow-hidden shadow-2xl flex flex-col justify-end ${className}`}
     >
-      {/* Decorative premium header inside canvas area */}
-      <div className="absolute top-6 left-6 right-6 z-20 flex justify-between items-start pointer-events-none select-none">
-        <div>
-          <span className="text-[10px] uppercase tracking-[0.25em] text-[#ffd700] font-bold">Crowd Perspective Sim</span>
-          <h3 className="text-sm font-semibold text-zinc-400 mt-1">Live Audience Visualization ({crowdCount} members)</h3>
+      {/* Interactive Controls Overlay */}
+      <div className="absolute top-6 left-6 right-6 z-40 flex justify-between items-start pointer-events-none">
+        <div className="pointer-events-auto select-none bg-zinc-950/80 backdrop-blur-md p-4 rounded-2xl border border-zinc-800 shadow-lg flex flex-col gap-1 max-w-[280px] sm:max-w-sm">
+          <span className="text-[9px] uppercase tracking-[0.25em] text-[#ffd700] font-bold">Crowd Perspective Sim</span>
+          <h3 className="text-xs font-semibold text-zinc-300 mt-0.5">Live Audience ({crowdCount} members)</h3>
+          
+          <div className="flex gap-2 mt-3 flex-wrap">
+            {!isDrawingMode ? (
+              <>
+                <button
+                  onClick={() => {
+                    setIsDrawingMode(true);
+                    setTempPoints(customPolygon ? [...customPolygon] : []);
+                  }}
+                  className="bg-white/10 hover:bg-white/20 active:scale-[0.97] transition-all text-white text-[10px] font-bold px-3 py-1.5 rounded-lg border border-white/10 cursor-pointer"
+                >
+                  {customPolygon ? 'Редагувати зону' : 'Накреслити зону'}
+                </button>
+                {customPolygon && (
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('crowd_spawn_polygon');
+                      setCustomPolygon(null);
+                    }}
+                    className="bg-red-950/40 hover:bg-red-900/50 active:scale-[0.97] transition-all text-red-300 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-red-900/30 cursor-pointer"
+                  >
+                    Скинути зону
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (tempPoints.length >= 3) {
+                      localStorage.setItem('crowd_spawn_polygon', JSON.stringify(tempPoints));
+                      setCustomPolygon(tempPoints);
+                      setIsDrawingMode(false);
+                    }
+                  }}
+                  disabled={tempPoints.length < 3}
+                  className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:hover:bg-green-600 active:scale-[0.97] transition-all text-white text-[10px] font-bold px-3 py-1.5 rounded-lg border border-green-500/20 cursor-pointer"
+                >
+                  Зберегти
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTempPoints([]);
+                  }}
+                  className="bg-zinc-800 hover:bg-zinc-700 active:scale-[0.97] transition-all text-zinc-300 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-zinc-700 cursor-pointer"
+                >
+                  Очистити
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsDrawingMode(false);
+                    setTempPoints([]);
+                  }}
+                  className="bg-zinc-950 hover:bg-zinc-900 active:scale-[0.97] transition-all text-zinc-400 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-zinc-800 cursor-pointer"
+                >
+                  Скасувати
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="bg-zinc-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-zinc-800 text-[10px] font-mono text-zinc-500 uppercase">
-          Render: WebGL 2D
+
+        <div className="pointer-events-auto bg-zinc-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-zinc-800 text-[10px] font-mono text-zinc-500 uppercase select-none">
+          {isDrawingMode ? 'Drawing Mode' : 'Render: WebGL 2D'}
         </div>
       </div>
+
+      {/* SVG Canvas for interactive drawing overlay */}
+      {isDrawingMode && (
+        <svg
+          onClick={(e) => {
+            if (!containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            setTempPoints([...tempPoints, { x, y }]);
+          }}
+          className="absolute inset-0 w-full h-full z-30 cursor-crosshair select-none bg-black/40"
+        >
+          {/* Render polygon preview */}
+          {tempPoints.length > 0 && (
+            <>
+              {tempPoints.length >= 3 && (
+                <polygon
+                  points={tempPoints.map(p => `${p.x * dimensions.width},${p.y * dimensions.height}`).join(' ')}
+                  fill="rgba(34, 197, 94, 0.25)"
+                  stroke="#22c55e"
+                  strokeWidth="2.5"
+                  strokeDasharray="4 4"
+                />
+              )}
+              {tempPoints.map((p, idx) => (
+                <g key={idx}>
+                  {idx > 0 && (
+                    <line
+                      x1={tempPoints[idx - 1].x * dimensions.width}
+                      y1={tempPoints[idx - 1].y * dimensions.height}
+                      x2={p.x * dimensions.width}
+                      y2={p.y * dimensions.height}
+                      stroke="#22c55e"
+                      strokeWidth="2"
+                    />
+                  )}
+                  {idx === tempPoints.length - 1 && tempPoints.length > 1 && (
+                    <line
+                      x1={p.x * dimensions.width}
+                      y1={p.y * dimensions.height}
+                      x2={tempPoints[0].x * dimensions.width}
+                      y2={tempPoints[0].y * dimensions.height}
+                      stroke="#22c55e"
+                      strokeWidth="1.5"
+                      strokeDasharray="2 2"
+                    />
+                  )}
+                  <circle
+                    cx={p.x * dimensions.width}
+                    cy={p.y * dimensions.height}
+                    r="5"
+                    fill="#22c55e"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    x={p.x * dimensions.width + 8}
+                    y={p.y * dimensions.height + 4}
+                    fill="#ffffff"
+                    fontSize="10"
+                    fontWeight="bold"
+                    className="select-none pointer-events-none drop-shadow"
+                  >
+                    {idx + 1}
+                  </text>
+                </g>
+              ))}
+            </>
+          )}
+          
+          {tempPoints.length === 0 && (
+            <text
+              x="50%"
+              y="50%"
+              textAnchor="middle"
+              fill="#ffffff"
+              fontSize="12"
+              fontWeight="600"
+              className="select-none pointer-events-none drop-shadow-md uppercase tracking-wide"
+            >
+              Клікайте по полям, щоб накреслити власну зону спавну (мінімум 3 точки)
+            </text>
+          )}
+        </svg>
+      )}
     </div>
   );
 }
