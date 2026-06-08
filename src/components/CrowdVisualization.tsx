@@ -61,6 +61,7 @@ export default function CrowdVisualization({
   const userAvatarSpriteRef = useRef<Sprite | null>(null);
   const userAvatarBorderRef = useRef<Graphics | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
 
   const personTexturesRef = useRef<Texture[]>([]);
   const backgroundSpriteRef = useRef<Sprite | null>(null);
@@ -162,10 +163,9 @@ export default function CrowdVisualization({
       const width = parent.clientWidth || 800;
       const height = parent.clientHeight || 450;
 
-      // Initialize the application
+      // Initialize the application with auto-resizing to the parent container
       await app.init({
-        width,
-        height,
+        resizeTo: parent,
         backgroundAlpha: 0, // Transparent background to allow CSS gradients behind
         antialias: true,
         resolution: window.devicePixelRatio || 1,
@@ -192,13 +192,15 @@ export default function CrowdVisualization({
       // 1. Load background image if it exists
       try {
         const bgTexture = await Assets.load('/background.png');
-        const bgSprite = new Sprite(bgTexture);
         
-        // Fit background using "cover" logic (preserve aspect ratio)
-        const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
-        bgSprite.scale.set(scale);
-        bgSprite.x = (width - bgSprite.width) / 2;
-        bgSprite.y = (height - bgSprite.height) / 2;
+        // Update aspect ratio state based on the loaded image dimensions
+        if (bgTexture.width && bgTexture.height) {
+          setAspectRatio(bgTexture.width / bgTexture.height);
+        }
+        
+        const bgSprite = new Sprite(bgTexture);
+        bgSprite.width = width;
+        bgSprite.height = height;
         
         app.stage.addChildAt(bgSprite, 0);
         backgroundSpriteRef.current = bgSprite;
@@ -262,27 +264,13 @@ export default function CrowdVisualization({
     const handleResize = () => {
       if (!pixiAppRef.current || !containerRef.current) return;
       const app = pixiAppRef.current;
-      const parent = containerRef.current;
-      
-      const width = parent.clientWidth;
-      const height = parent.clientHeight;
-      
-      app.renderer.resize(width, height);
-      
-      // Ensure canvas CSS matches parent
-      app.canvas.style.width = '100%';
-      app.canvas.style.height = '100%';
+      const width = app.screen.width;
+      const height = app.screen.height;
 
-      // Resize background using "cover" logic (preserve aspect ratio)
+      // Update background dimensions
       if (backgroundSpriteRef.current) {
-        const bgSprite = backgroundSpriteRef.current;
-        const bgTexture = bgSprite.texture;
-        if (bgTexture) {
-          const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
-          bgSprite.scale.set(scale);
-          bgSprite.x = (width - bgSprite.width) / 2;
-          bgSprite.y = (height - bgSprite.height) / 2;
-        }
+        backgroundSpriteRef.current.width = width;
+        backgroundSpriteRef.current.height = height;
       } else {
         // Redraw grid on fallback graphics
         const bg = app.stage.getChildAt(0);
@@ -545,7 +533,8 @@ export default function CrowdVisualization({
   return (
     <div 
       ref={containerRef} 
-      className={`relative w-full h-full min-h-[350px] bg-gradient-to-b from-[#09090b] via-[#101014] to-[#040406] rounded-[2rem] border border-zinc-800 overflow-hidden shadow-2xl flex flex-col justify-end ${className}`}
+      style={{ aspectRatio: aspectRatio ? `${aspectRatio}` : 'auto' }}
+      className={`relative w-full min-h-[350px] bg-gradient-to-b from-[#09090b] via-[#101014] to-[#040406] rounded-[2rem] border border-zinc-800 overflow-hidden shadow-2xl flex flex-col justify-end ${className}`}
     >
       {/* Decorative premium header inside canvas area */}
       <div className="absolute top-6 left-6 right-6 z-20 flex justify-between items-start pointer-events-none select-none">
