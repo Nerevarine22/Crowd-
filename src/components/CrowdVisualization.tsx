@@ -420,18 +420,18 @@ export default function CrowdVisualization({
         // 1. Generate Y coordinate first
         ny = Math.random() * (maxY - minY) + minY;
 
-        // 2. Calculate X boundaries based on Y (wider pitch trapezoid)
-        // At y = 0.42 (minY): x ranges from 0.28 to 0.72
+        // 2. Calculate X boundaries based on Y (wider pitch trapezoid to fill sides to the stands)
+        // At y = 0.42 (minY): x ranges from 0.22 to 0.78
         // At y = 0.82 (maxY): x ranges from 0.00 to 1.00
         const ratio = (ny - minY) / (maxY - minY);
-        const xMin = 0.28 - ratio * 0.28;
-        const xMax = 0.72 + ratio * 0.28;
+        const xMin = 0.22 - ratio * 0.22;
+        const xMax = 0.78 + ratio * 0.22;
 
         nx = Math.random() * (xMax - xMin) + xMin;
         attempts++;
 
         // 3. Goal cutout: avoid spawning inside the goal net bounds (absolute constraint)
-        if (nx >= 0.30 && nx <= 0.60 && ny >= 0.72 && ny <= 0.815) {
+        if (nx >= 0.28 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
           continue;
         }
 
@@ -467,8 +467,8 @@ export default function CrowdVisualization({
       }
 
       // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
-      if (nx >= 0.30 && nx <= 0.60 && ny >= 0.72 && ny <= 0.815) {
-        ny = Math.random() * (0.71 - minY) + minY; // push behind the goal
+      if (nx >= 0.28 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
+        ny = Math.random() * (0.69 - minY) + minY; // push behind the goal
       }
 
       let texture: Texture;
