@@ -17,6 +17,7 @@ interface CrowdMember {
   gridX: number;
   gridY: number;
   color: string;
+  isHighlighted?: boolean;
 }
 
 // Preset color palette for light theme grid aesthetics
@@ -396,6 +397,54 @@ export default function CrowdVisualization({
       window.removeEventListener('resize', handleResize);
     };
   }, [crowdCount, isLoaded]);
+ 
+  // 4b. Periodic random highlight effect
+  useEffect(() => {
+    if (!isLoaded) return;
+ 
+    const intervalId = setInterval(() => {
+      const members = crowdMembersRef.current;
+      if (members.length === 0) return;
+ 
+      // Highlight a small percentage of the crowd (1 to 5 members max)
+      const highlightCount = Math.max(1, Math.min(5, Math.floor(members.length / 50)));
+ 
+      for (let i = 0; i < highlightCount; i++) {
+        const randomIndex = Math.floor(Math.random() * members.length);
+        const member = members[randomIndex];
+ 
+        if (member && member.sprite && !member.sprite.destroyed && !member.isHighlighted) {
+          member.isHighlighted = true;
+ 
+          const sprite = member.sprite;
+          const originalWidth = sprite.width;
+          const originalHeight = sprite.height;
+          const originalTint = sprite.tint;
+          const originalZIndex = sprite.zIndex;
+ 
+          // Highlight visual state: scale up and color tint yellow
+          sprite.width = originalWidth * 1.4;
+          sprite.height = originalHeight * 1.4;
+          sprite.tint = 0xffea00; // Bright Gold/Yellow
+          sprite.zIndex = originalZIndex + 10000; // Bring to front
+ 
+          setTimeout(() => {
+            if (!sprite.destroyed) {
+              sprite.width = originalWidth;
+              sprite.height = originalHeight;
+              sprite.tint = originalTint;
+              sprite.zIndex = originalZIndex;
+            }
+            member.isHighlighted = false;
+          }, 1000);
+        }
+      }
+    }, 1500); // Check and highlight every 1.5 seconds
+ 
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isLoaded, crowdCount]);
 
   // 5. Load and Apply User Avatar - Obsolete as avatar is rendered as an HTML overlay
 
