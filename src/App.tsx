@@ -42,12 +42,15 @@ export default function App() {
         throw new Error(data.error || 'Failed to fetch user data');
       }
 
+      const highResAvatarUrl = data.avatarUrl ? data.avatarUrl.replace('_normal', '_400x400') : '';
+      const proxiedAvatarUrl = highResAvatarUrl ? `/api/avatar-proxy/avatar.jpg?url=${encodeURIComponent(highResAvatarUrl)}` : '';
       setUserData({
         followersCount: data.followersCount,
-        avatarUrl: data.avatarUrl,
+        avatarUrl: proxiedAvatarUrl,
       });
-      const mappedCount = Math.min(Math.max(15, Math.floor(Math.log10((data.followersCount || 0) + 1) * 35)), 350);
-      setCrowdCount(mappedCount);
+      // Відображаємо реальну кількість підписників, обмежену до 100000
+      const exactCount = Math.min(data.followersCount || 0, 100000);
+      setCrowdCount(exactCount);
     } catch (err: any) {
       setError(err.message || 'Сталася помилка. Перевірте нікнейм.');
     } finally {
@@ -83,7 +86,7 @@ export default function App() {
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 md:p-8 flex flex-col justify-center gap-4">
             <div>
               <h2 className="text-2xl font-bold text-white tracking-tight mb-2">Пошук X профілю</h2>
-              <p className="text-zinc-400 text-sm">Введіть username щоб отримати кількість підписників та фото</p>
+              <p className="text-zinc-400 text-sm">Введіть username, щоб отримати аватар та відобразити підписників у сітці навколо нього</p>
             </div>
             
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -125,13 +128,13 @@ export default function App() {
             {/* Always visible slider control */}
             <div className="mt-2 pt-4 border-t border-zinc-800/80">
               <div className="flex justify-between text-xs text-zinc-400 mb-2">
-                <span>Масштабований натовп:</span>
+                <span>Кількість людей у сітці:</span>
                 <span className="font-mono text-[#ffd700] font-bold">{crowdCount} осіб</span>
               </div>
               <input
                 type="range"
                 min="0"
-                max="5000"
+                max="100000"
                 value={crowdCount}
                 onChange={(e) => setCrowdCount(parseInt(e.target.value))}
                 className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-white focus:outline-none"

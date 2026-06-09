@@ -17,6 +17,37 @@ async function startServer() {
     token: process.env.APIFY_API_TOKEN || '',
   });
 
+  // Proxy Route to bypass CORS on Twitter avatars with .jpg extension for PixiJS auto-detection
+  app.get('/api/avatar-proxy/avatar.jpg', async (req, res) => {
+    const { url } = req.query;
+    console.log('[Proxy] Request received for URL:', url);
+    try {
+      if (!url) {
+        console.warn('[Proxy] URL is missing');
+        return res.status(400).send('URL is required');
+      }
+
+      const response = await fetch(url as string);
+      console.log('[Proxy] Fetch response status:', response.status);
+      if (!response.ok) {
+        return res.status(response.status).send('Failed to fetch image');
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      console.log('[Proxy] Content type:', contentType);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+      console.log('[Proxy] Image sent successfully, bytes:', arrayBuffer.byteLength);
+    } catch (error: any) {
+      console.error('[Proxy] Avatar proxy error:', error);
+      res.status(500).send(error.message || 'Failed to proxy image');
+    }
+  });
+
   // API Route to fetch Twitter profile info
   app.post('/api/twitter-info', async (req, res) => {
     try {

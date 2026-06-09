@@ -14,65 +14,52 @@ interface CrowdVisualizationProps {
 
 interface CrowdMember {
   sprite: Sprite;
-  normalizedX: number; // 0 to 1
-  normalizedY: number; // 0.45 to 0.95 (within floor bounding box)
-  baseScale: number;   // slight random variation for natural height differences
-  characterStyle: number;
+  gridX: number;
+  gridY: number;
   color: string;
-  scaleMultiplier: number;
 }
 
-// Preset color palette for modern, premium crowd aesthetics
+// Preset color palette for light theme grid aesthetics
 const PALETTE = [
-  '#FF4B91', // Vibrant Pink
-  '#FF7676', // Soft Coral
-  '#FFB534', // Warm Gold
-  '#40F8FF', // Electric Cyan
-  '#9F0D7F', // Deep Violet
-  '#102C57', // Sleek Navy
-  '#00FFAB', // Neon Green
-  '#AD8BFF', // Soft Purple
+  '#0F172A', // Slate 900 (Deep Navy)
+  '#2563EB', // Blue 600
+  '#DB2777', // Pink 600
+  '#D97706', // Amber 600
+  '#059669', // Emerald 600
+  '#7C3AED', // Violet 600
+  '#EA580C', // Orange 600
+  '#0D9488', // Teal 600
 ];
 
-/**
- * Calculates the perspective scale of a sprite based on its Y coordinate.
- * Uses linear interpolation (lerp).
- */
-export function calculatePerspectiveScale(
-  y: number,
-  canvasHeight: number,
-  minScale = 0.24,
-  maxScale = 0.98
-): number {
-  if (canvasHeight <= 0) return minScale;
-  const ratio = y / canvasHeight;
-  
-  const horizon = 0.40; // The actual vanishing point of the pitch lines on the screen
-  const maxY = 0.82;    // The foreground limit of the pitch
-  
-  if (ratio <= horizon) return minScale;
-  
-  // Linear scale starting from horizon (vanishing point = 0 size, maxY = maxScale size)
-  const t = Math.max(0, Math.min(1, (ratio - horizon) / (maxY - horizon)));
-  
-  return minScale + t * (maxScale - minScale);
-}
+// Helper function to draw a mathematically perfect centered star polygon
+const drawStar = (
+  g: Graphics,
+  cx: number,
+  cy: number,
+  spikes: number,
+  outerRadius: number,
+  innerRadius: number,
+  color: number
+) => {
+  let rot = (Math.PI / 2) * 3;
+  let x = cx;
+  let y = cy;
+  const step = Math.PI / spikes;
 
-/**
- * Checks if a point is inside a polygon using the Ray-Casting algorithm.
- */
-function isPointInPolygon(point: { x: number; y: number }, polygon: { x: number; y: number }[]): boolean {
-  const x = point.x, y = point.y;
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y;
-    const xj = polygon[j].x, yj = polygon[j].y;
-    const intersect = ((yi > y) !== (yj > y))
-        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
+  const points: number[] = [];
+  for (let i = 0; i < spikes; i++) {
+    x = cx + Math.cos(rot) * outerRadius;
+    y = cy + Math.sin(rot) * outerRadius;
+    points.push(x, y);
+    rot += step;
+
+    x = cx + Math.cos(rot) * innerRadius;
+    y = cy + Math.sin(rot) * innerRadius;
+    points.push(x, y);
+    rot += step;
   }
-  return inside;
-}
+  g.poly(points).fill({ color });
+};
 
 export default function CrowdVisualization({
   avatarUrl,
@@ -83,50 +70,33 @@ export default function CrowdVisualization({
   const pixiAppRef = useRef<Application | null>(null);
   const crowdContainerRef = useRef<Container | null>(null);
   const crowdMembersRef = useRef<CrowdMember[]>([]);
-  const userAvatarSpriteRef = useRef<Sprite | null>(null);
-  const userAvatarBorderRef = useRef<Graphics | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    if (avatarUrl) {
+      setImageSrc(avatarUrl);
+      setHasError(false);
+    } else {
+      setImageSrc(null);
+      setHasError(true);
+    }
+  }, [avatarUrl]);
+
+  const handleImageError = () => {
+    if (imageSrc && imageSrc.includes('_400x400')) {
+      console.log('[React Avatar] Loading _400x400 failed. Retrying with _normal size...');
+      setImageSrc(imageSrc.replace('_400x400', '_normal'));
+    } else {
+      console.log('[React Avatar] All image load attempts failed. Falling back to VIP badge.');
+      setHasError(true);
+    }
+  };
 
   const personTexturesRef = useRef<Texture[]>([]);
-  const backgroundSpriteRef = useRef<Sprite | null>(null);
-
-  // Keep track of textures generated to reuse them
   const textureCacheRef = useRef<Map<string, Texture>>(new Map());
-
-  // Interactive spawn zone polygon drawing states
-  const [customPolygon, setCustomPolygon] = useState<{ x: number; y: number }[] | null>(null);
-  const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 450 });
-
-  // Load custom polygon on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('crowd_spawn_polygon');
-      if (saved) {
-        setCustomPolygon(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.warn("Failed to load saved spawn polygon from localStorage", e);
-    }
-  }, []);
-
-  // Sync canvas size dimensions for SVG overlay scaling
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const updateDimensions = () => {
-      if (containerRef.current) {
-        setDimensions({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        });
-      }
-    };
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, [isLoaded]);
 
   /**
    * Generates a stylized person silhouette texture using Pixi Graphics
@@ -159,19 +129,19 @@ export default function CrowdVisualization({
        .fill({ color: hexColor });
     } else if (style === 1) {
       // Headphones
-      g.rect(-headRadius - 1.5, headY - 2, 1.5, 4).fill({ color: 0xffffff });
-      g.rect(headRadius, headY - 2, 1.5, 4).fill({ color: 0xffffff });
+      g.rect(-headRadius - 1.5, headY - 2, 1.5, 4).fill({ color: 0x64748b });
+      g.rect(headRadius, headY - 2, 1.5, 4).fill({ color: 0x64748b });
       g.circle(0, headY, headRadius + 0.5)
-       .stroke({ width: 1.5, color: 0xffffff });
+       .stroke({ width: 1.5, color: 0x64748b });
     } else if (style === 2) {
       // Cap / Hat
       g.rect(-headRadius - 2, headY - headRadius + 1, headRadius * 2 + 4, 2)
-       .fill({ color: 0xffffff });
+       .fill({ color: 0x475569 });
       g.rect(-headRadius, headY - headRadius - 1, headRadius * 2, 2)
-       .fill({ color: 0xffffff });
+       .fill({ color: 0x475569 });
     } else if (style === 3) {
       // Glasses / Shades
-      g.rect(-headRadius + 2, headY - 1, headRadius * 2 - 4, 2).fill({ color: 0x18181b });
+      g.rect(-headRadius + 2, headY - 1, headRadius * 2 - 4, 2).fill({ color: 0x0f172a });
     }
 
     // Draw simple legs
@@ -184,33 +154,28 @@ export default function CrowdVisualization({
   };
 
   /**
-   * Generates a VIP golden texture for the user's avatar fallback
+   * Generates a simple circular dot texture for high performance rendering at high crowd counts (>30k)
    */
-  const getVipFallbackTexture = (app: Application): Texture => {
-    const cacheKey = 'vip_fallback';
+  const getOrCreateDotTexture = (app: Application, color: string): Texture => {
+    const cacheKey = `dot_${color}`;
     if (textureCacheRef.current.has(cacheKey)) {
       return textureCacheRef.current.get(cacheKey)!;
     }
 
     const g = new Graphics();
+    const hexColor = parseInt(color.replace('#', '0x'));
     
-    // Golden body capsule
-    g.roundRect(-12, -48, 24, 48, 10)
-     .fill({ color: 0xffd700 });
-     
-    // Head
-    g.circle(0, -60, 9)
-     .fill({ color: 0xffd700 });
-
-    // Crown details
-    g.poly([-6, -70, 0, -65, 6, -70, 4, -62, -4, -62])
-     .fill({ color: 0xffaa00 });
+    g.circle(0, 0, 10)
+     .fill({ color: hexColor });
 
     const texture = app.renderer.generateTexture({ target: g });
     textureCacheRef.current.set(cacheKey, texture);
     return texture;
   };
 
+  // getVipFallbackTexture has been simplified and moved to direct graphics drawing in updateAvatarPosition
+
+  // 1. Initialize PixiJS Application
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -219,13 +184,11 @@ export default function CrowdVisualization({
     
     const initPixi = async () => {
       const parent = containerRef.current!;
-      const width = parent.clientWidth || 800;
-      const height = parent.clientHeight || 450;
 
-      // Initialize the application with auto-resizing to the parent container
       await app.init({
         resizeTo: parent,
-        backgroundAlpha: 0, // Transparent background to allow CSS gradients behind
+        backgroundColor: 0xffffff,
+        backgroundAlpha: 1,
         antialias: true,
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
@@ -238,68 +201,17 @@ export default function CrowdVisualization({
 
       pixiAppRef.current = app;
       
-      // Apply CSS to prevent stretching
       app.canvas.style.position = 'absolute';
       app.canvas.style.top = '0';
       app.canvas.style.left = '0';
       app.canvas.style.width = '100%';
       app.canvas.style.height = '100%';
       app.canvas.style.display = 'block';
+      app.canvas.style.zIndex = '10';
       
       parent.appendChild(app.canvas);
 
-      // 1. Load background image if it exists
-      try {
-        const bgTexture = await Assets.load('/background.png');
-        if (bgTexture.source) {
-          bgTexture.source.autoGenerateMipmaps = true;
-          bgTexture.source.scaleMode = 'linear';
-          bgTexture.source.style.mipmapMode = 'on';
-        }
-        
-        // Update aspect ratio state based on the loaded image dimensions
-        if (bgTexture.width && bgTexture.height) {
-          setAspectRatio(bgTexture.width / bgTexture.height);
-        }
-        
-        const bgSprite = new Sprite(bgTexture);
-        
-        // Fit background using "cover" logic (preserve aspect ratio, center it)
-        const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
-        bgSprite.scale.set(scale);
-        bgSprite.x = (width - bgSprite.width) / 2;
-        bgSprite.y = (height - bgSprite.height) / 2;
-        
-        app.stage.addChildAt(bgSprite, 0);
-        backgroundSpriteRef.current = bgSprite;
-      } catch (e) {
-        console.warn("Failed to load /background.png, using fallback graphic grid", e);
-        
-        // Fallback grid
-        const bgGraphics = new Graphics();
-        app.stage.addChildAt(bgGraphics, 0);
-        
-        const drawGrid = (w: number, h: number) => {
-          bgGraphics.clear();
-          const horizonY = h * 0.42;
-          bgGraphics.rect(0, horizonY, w, h - horizonY).fill({ color: 0x09090b, alpha: 0.85 });
-          const vpX = w / 2;
-          const vpY = horizonY;
-          for (let i = 0; i <= 18; i++) {
-            const xBottom = (i / 18) * w;
-            bgGraphics.moveTo(vpX, vpY).lineTo(xBottom, h).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
-          }
-          for (let i = 0; i <= 12; i++) {
-            const ratio = Math.pow(i / 12, 2);
-            const y = horizonY + ratio * (h - horizonY);
-            bgGraphics.moveTo(0, y).lineTo(w, y).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
-          }
-          bgGraphics.moveTo(0, horizonY).lineTo(w, horizonY).stroke({ width: 2.5, color: 0x3f3f46, alpha: 0.6 });
-        };
-        drawGrid(width, height);
-      }
-
-      // 2. Pre-load custom people sprites
+      // Pre-load custom people sprites
       const spriteUrls = [
         '/person1.png',
         '/person2.png',
@@ -322,7 +234,7 @@ export default function CrowdVisualization({
           }
           loadedTextures.push(tex);
         } catch (e) {
-          console.warn(`Could not load custom sprite ${url}, using silhouettes as fallback`);
+          // Fallback to silhouettes
         }
       }
       personTexturesRef.current = loadedTextures;
@@ -338,53 +250,8 @@ export default function CrowdVisualization({
 
     initPixi();
 
-    // Handle resizing
-    const handleResize = () => {
-      if (!pixiAppRef.current || !containerRef.current) return;
-      const app = pixiAppRef.current;
-      const width = app.screen.width;
-      const height = app.screen.height;
-
-      // Update background dimensions using "cover" logic to preserve aspect ratio
-      if (backgroundSpriteRef.current) {
-        const bgSprite = backgroundSpriteRef.current;
-        const bgTexture = bgSprite.texture;
-        if (bgTexture) {
-          const scale = Math.max(width / bgTexture.width, height / bgTexture.height);
-          bgSprite.scale.set(scale);
-          bgSprite.x = (width - bgSprite.width) / 2;
-          bgSprite.y = (height - bgSprite.height) / 2;
-        }
-      } else {
-        // Redraw grid on fallback graphics
-        const bg = app.stage.getChildAt(0);
-        if (bg && bg instanceof Graphics) {
-          const horizonY = height * 0.42;
-          bg.clear();
-          bg.rect(0, horizonY, width, height - horizonY).fill({ color: 0x09090b, alpha: 0.85 });
-          const vpX = width / 2;
-          const vpY = horizonY;
-          for (let i = 0; i <= 18; i++) {
-            const xBottom = (i / 18) * width;
-            bg.moveTo(vpX, vpY).lineTo(xBottom, height).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
-          }
-          for (let i = 0; i <= 12; i++) {
-            const ratio = Math.pow(i / 12, 2);
-            const y = horizonY + ratio * (height - horizonY);
-            bg.moveTo(0, y).lineTo(width, y).stroke({ width: 1.5, color: 0x27272a, alpha: 0.35 });
-          }
-          bg.moveTo(0, horizonY).lineTo(width, horizonY).stroke({ width: 2.5, color: 0x3f3f46, alpha: 0.6 });
-        }
-      }
-
-      updateAllPositions();
-    };
-
-    window.addEventListener('resize', handleResize);
-
     return () => {
       active = false;
-      window.removeEventListener('resize', handleResize);
       if (pixiAppRef.current) {
         pixiAppRef.current.destroy(true, { children: true, texture: true });
         pixiAppRef.current = null;
@@ -392,444 +259,184 @@ export default function CrowdVisualization({
     };
   }, []);
 
-  // Update positions helper
-  const updateAllPositions = () => {
-    if (!pixiAppRef.current) return;
-    const app = pixiAppRef.current;
-    const width = app.screen.width;
-    const height = app.screen.height;
+  // 2. Position Helper for Avatar - Obsolete as avatar is rendered as an HTML overlay
 
-    // 1. Update crowd sprites
-    crowdMembersRef.current.forEach((member) => {
-      const posX = member.normalizedX * width;
-      const posY = member.normalizedY * height;
-      const scale = calculatePerspectiveScale(posY, height) * member.baseScale * member.scaleMultiplier;
-      
-      member.sprite.x = posX;
-      member.sprite.y = posY;
-      member.sprite.scale.set(scale);
-      member.sprite.zIndex = Math.floor(posY); // Depth sorting
-    });
+  // 3. Grid Rebuilding Logic
+  const rebuildGrid = () => {
+    if (!pixiAppRef.current || !crowdContainerRef.current || !isLoaded) return;
 
-    // 2. Update user avatar sprite
-    const avatarSprite = userAvatarSpriteRef.current;
-    const avatarBorder = userAvatarBorderRef.current;
-    if (avatarSprite) {
-      const avX = width / 2;
-      const avY = height * 0.76; // Place in VIP foreground
-      const avScale = calculatePerspectiveScale(avY, height) * 2.0; // Double scale
-
-      avatarSprite.x = avX;
-      avatarSprite.y = avY;
-      avatarSprite.scale.set(avScale);
-      avatarSprite.zIndex = Math.floor(avY) + 5; // Ensure it's slightly in front of peers at same Y
-
-      if (avatarBorder) {
-        avatarBorder.clear();
-        
-        // Define base size of avatar image (approx 50px original, scaled)
-        const radius = 22; // 44px diameter
-        avatarBorder.x = avX;
-        avatarBorder.y = avY;
-        avatarBorder.scale.set(avScale);
-        avatarBorder.zIndex = avatarSprite.zIndex + 1; // Keep border on top
-
-        // Golden glowing outer circle
-        avatarBorder.circle(0, 0, radius + 2.5)
-                    .stroke({ width: 2.0, color: 0xffd700 }) // gold border
-                    .circle(0, 0, radius + 4.5)
-                    .stroke({ width: 1.0, color: 0xffd700, alpha: 0.5 }); // outer glow
-      }
-    }
-  };
-
-  /**
-   * Side effect: repopulate when crowdCount or isLoaded changes
-   */
-  useEffect(() => {
-    if (!isLoaded || !pixiAppRef.current || !crowdContainerRef.current) return;
-    
     const app = pixiAppRef.current;
     const container = crowdContainerRef.current;
-    
-    // Clear existing crowd
+    const { width, height } = app.screen;
+
+    // Clear existing crowd sprites
     crowdMembersRef.current.forEach((member) => {
       container.removeChild(member.sprite);
     });
     crowdMembersRef.current = [];
 
-    // Bounding Box limits (normalized)
-    let minY = 0.42;
-    let maxY = 0.82;
-    
-    // If a custom polygon is active, calculate its vertical bounding box
-    if (customPolygon && customPolygon.length >= 3) {
-      minY = Math.min(...customPolygon.map(p => p.y));
-      maxY = Math.max(...customPolygon.map(p => p.y));
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // Active area with padding
+    const padding = 40;
+    const activeWidth = width - padding * 2;
+    const activeHeight = height - padding * 2;
+
+    const N = Math.max(1, crowdCount);
+
+    // Calculate grid cell dimensions dynamically
+    let cellWidth = Math.sqrt((activeWidth * activeHeight) / (N * 1.4));
+    cellWidth = Math.max(3.5, Math.min(70, cellWidth));
+    const cellHeight = cellWidth * 1.25;
+
+    const cols = Math.max(3, Math.floor(activeWidth / cellWidth));
+    const rows = Math.max(3, Math.floor(activeHeight / cellHeight));
+
+    const startX = (width - (cols - 1) * cellWidth) / 2;
+    const startY = (height - (rows - 1) * cellHeight) / 2;
+
+    // Generate grid points
+    const cells: { x: number; y: number; dist: number }[] = [];
+    const isDot = false; // Always render stylized person silhouettes/photos instead of color dots
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = startX + c * cellWidth;
+        const y = startY + r * cellHeight;
+        
+        // Symmetrical centering: calculate from the cell's center, not its feet coordinate
+        const cellCenterY = isDot ? y : (y - cellHeight / 2);
+        const dx = x - centerX;
+        const dy = cellCenterY - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        cells.push({ x, y, dist });
+      }
     }
+
+    // Sort cells by proximity to the center
+    cells.sort((a, b) => a.dist - b.dist);
+
+    // Skip cells within center cutout area (avatarRadius)
+    const avatarRadius = 65; 
+    const validCells = cells.filter((cell) => cell.dist >= avatarRadius);
+
+    const actualCount = Math.min(crowdCount, validCells.length);
 
     const newMembers: CrowdMember[] = [];
 
-    for (let i = 0; i < crowdCount; i++) {
-      // Overlap avoidance loop
-      let attempts = 0;
-      let nx = 0.5;
-      let ny = 0.7;
-      let isValid = false;
-
-      while (!isValid && attempts < 250) {
-        // 1. Generate Y coordinate first
-        ny = Math.random() * (maxY - minY) + minY;
-
-        // 2. Generate X coordinate
-        if (customPolygon && customPolygon.length >= 3) {
-          nx = Math.random(); // random x across screen
-          
-          // Check if (nx, ny) is inside the custom polygon
-          if (!isPointInPolygon({ x: nx, y: ny }, customPolygon)) {
-            attempts++;
-            continue;
-          }
-        } else {
-          // Default pitch trapezoid
-          const ratio = (ny - minY) / (maxY - minY);
-          const curveRatio = Math.pow(ratio, 0.6);
-          const xMin = 0.26 - curveRatio * 0.26;
-          const xMax = 0.74 + curveRatio * 0.26;
-          nx = Math.random() * (xMax - xMin) + xMin;
-        }
-        attempts++;
-
-        isValid = true;
-
-        // 3. Goal cutout: avoid spawning inside the goal net bounds (absolute constraint)
-        if (nx >= 0.26 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
-          isValid = false;
-          continue;
-        }
-
-        // Avoid spawning right on top of the central user avatar space if avatar is active (absolute constraint)
-        if (avatarUrl) {
-          const distToCenter = Math.sqrt(Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.76, 2));
-          if (distToCenter < 0.10) {
-            isValid = false;
-            continue;
-          }
-        }
-
-        // Avoid spawning too close to peers (soft constraint - relaxed after 80 attempts to allow packing)
-        let hasCollision = false;
-        if (attempts < 80) {
-          // Compute depthFactor relative to full grass height for consistent scaling of collisions
-          const fullMinY = 0.42;
-          const fullMaxY = 0.82;
-          const depthFactor = (ny - fullMinY) / (fullMaxY - fullMinY);
-          const minDx = 0.012 + depthFactor * 0.038;
-          const minDy = 0.010 + depthFactor * 0.028;
-
-          for (const existing of newMembers) {
-            const dx = Math.abs(nx - existing.normalizedX);
-            const dy = Math.abs(ny - existing.normalizedY);
-
-            if (dy < minDy && dx < minDx) {
-              hasCollision = true;
-              break;
-            }
-          }
-        }
-
-        if (!hasCollision) {
-          isValid = true;
-        }
-      }
-
-      // Hard fallback check: Ensure we never ever append a coordinate inside the goal cutout
-      if (nx >= 0.26 && nx <= 0.62 && ny >= 0.70 && ny <= 0.82) {
-        ny = Math.random() * (0.69 - minY) + minY; // push behind the goal
-      }
-
+    for (let i = 0; i < actualCount; i++) {
+      const cell = validCells[i];
       let texture: Texture;
       let isCustomSprite = false;
       let scaleMultiplier = 1.0;
 
-      if (personTexturesRef.current.length > 0) {
-        // Choose one of the custom textures
+      if (isDot) {
+        const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+        texture = getOrCreateDotTexture(app, color);
+      } else if (personTexturesRef.current.length > 0) {
         texture = personTexturesRef.current[Math.floor(Math.random() * personTexturesRef.current.length)];
         isCustomSprite = true;
-        
-        // Normalize height to baseHeight (e.g. 100px) so sprites fit well regardless of raw image resolution
         const baseHeight = 100;
         if (texture.height > 0) {
           scaleMultiplier = baseHeight / texture.height;
         }
       } else {
-        // Fallback to silhouette graphics
         const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
         const style = Math.floor(Math.random() * 4);
         texture = getOrCreatePersonTexture(app, color, style);
       }
 
       const sprite = new Sprite(texture);
-      sprite.anchor.set(0.5, 1.0); // Pivot at bottom-center (feet)
-      
+
+      // Scale to fit grid cell nicely
+      if (isDot) {
+        sprite.anchor.set(0.5, 0.5); // Center dot in cell
+        sprite.width = cellWidth * 0.75;
+        sprite.height = cellWidth * 0.75; // Square dot
+      } else {
+        sprite.anchor.set(0.5, 1.0); // Pivot at feet
+        if (isCustomSprite) {
+          sprite.width = cellWidth * 0.75;
+          sprite.height = cellHeight * 0.85;
+        } else {
+          sprite.width = cellWidth * 0.65;
+          sprite.height = cellHeight * 0.80;
+        }
+      }
+
+      sprite.x = cell.x;
+      sprite.y = cell.y;
+      sprite.zIndex = Math.floor(cell.y);
+
       container.addChild(sprite);
 
       newMembers.push({
         sprite,
-        normalizedX: nx,
-        normalizedY: ny,
-        baseScale: 0.88 + Math.random() * 0.24, // natural variation
-        characterStyle: isCustomSprite ? -1 : 0,
-        color: isCustomSprite ? '#ffffff' : PALETTE[Math.floor(Math.random() * PALETTE.length)],
-        scaleMultiplier
+        gridX: cell.x,
+        gridY: cell.y,
+        color: isDot ? '#ffffff' : (isCustomSprite ? '#ffffff' : PALETTE[Math.floor(Math.random() * PALETTE.length)]),
       });
     }
 
     crowdMembersRef.current = newMembers;
-    updateAllPositions();
-  }, [crowdCount, isLoaded, customPolygon]);
+  };
 
-  /**
-   * Side effect: load and display user avatar when avatarUrl changes
-   */
+  // 4. Sync grid on crowdCount changes or window resize
   useEffect(() => {
-    if (!isLoaded || !pixiAppRef.current || !crowdContainerRef.current) return;
+    if (!isLoaded) return;
     
-    const app = pixiAppRef.current;
-    const container = crowdContainerRef.current;
+    rebuildGrid();
 
-    // Clean up old avatar
-    if (userAvatarSpriteRef.current) {
-      container.removeChild(userAvatarSpriteRef.current);
-      userAvatarSpriteRef.current.destroy({ children: true });
-      userAvatarSpriteRef.current = null;
-    }
-    if (userAvatarBorderRef.current) {
-      container.removeChild(userAvatarBorderRef.current);
-      userAvatarBorderRef.current.destroy();
-      userAvatarBorderRef.current = null;
-    }
-
-    const loadAvatar = async () => {
-      if (!avatarUrl) {
-        return;
-      }
-
-      let texture: Texture;
-      let hasImage = false;
-
-      try {
-        // Attempt loading external image with CORS support
-        texture = await Assets.load({
-          src: avatarUrl,
-          data: {
-            crossOrigin: 'anonymous',
-          }
-        });
-        hasImage = true;
-      } catch (e) {
-        console.warn("Could not load avatar image via Pixi Assets (CORS/network). Falling back to gold VIP avatar.", e);
-        texture = getVipFallbackTexture(app);
-      }
-
-      const avatarSprite = new Sprite(texture);
-      avatarSprite.anchor.set(0.5, 0.5); // anchor in middle for clean rotation/scaling and circular masking
-
-      // If we loaded a square user avatar image, we mask it into a circle
-      if (hasImage) {
-        // Force width/height to make it consistent (e.g. 44px diameter)
-        const targetSize = 44;
-        avatarSprite.width = targetSize;
-        avatarSprite.height = targetSize;
-
-        // Circular mask
-        const maskG = new Graphics();
-        maskG.circle(0, 0, targetSize / 2).fill({ color: 0xffffff });
-        
-        avatarSprite.mask = maskG;
-        avatarSprite.addChild(maskG); // mask must be added to scene/parent
-      }
-
-      container.addChild(avatarSprite);
-      userAvatarSpriteRef.current = avatarSprite;
-
-      // Add a premium golden outline
-      const borderG = new Graphics();
-      container.addChild(borderG);
-      userAvatarBorderRef.current = borderG;
-
-      updateAllPositions();
+    const handleResize = () => {
+      rebuildGrid();
     };
 
-    loadAvatar();
-  }, [avatarUrl, isLoaded]);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [crowdCount, isLoaded]);
+
+  // 5. Load and Apply User Avatar - Obsolete as avatar is rendered as an HTML overlay
 
   return (
     <div 
       ref={containerRef} 
-      style={{ aspectRatio: aspectRatio ? `${aspectRatio}` : 'auto' }}
-      className={`relative w-full min-h-[200px] bg-gradient-to-b from-[#09090b] via-[#101014] to-[#040406] rounded-[2rem] border border-zinc-800 overflow-hidden shadow-2xl flex flex-col justify-end ${className}`}
+      className={`relative w-full min-h-[400px] h-full bg-white rounded-[2rem] border border-zinc-200 overflow-hidden shadow-xl flex flex-col justify-end ${className}`}
     >
-      {/* Interactive Controls Overlay */}
-      <div className="absolute top-6 left-6 right-6 z-40 flex justify-between items-start pointer-events-none">
-        <div className="pointer-events-auto select-none bg-zinc-950/80 backdrop-blur-md p-4 rounded-2xl border border-zinc-800 shadow-lg flex flex-col gap-1 max-w-[280px] sm:max-w-sm">
-          <span className="text-[9px] uppercase tracking-[0.25em] text-[#ffd700] font-bold">Crowd Perspective Sim</span>
-          <h3 className="text-xs font-semibold text-zinc-300 mt-0.5">Live Audience ({crowdCount} members)</h3>
-          
-          <div className="flex gap-2 mt-3 flex-wrap">
-            {!isDrawingMode ? (
-              <>
-                <button
-                  onClick={() => {
-                    setIsDrawingMode(true);
-                    setTempPoints(customPolygon ? [...customPolygon] : []);
-                  }}
-                  className="bg-white/10 hover:bg-white/20 active:scale-[0.97] transition-all text-white text-[10px] font-bold px-3 py-1.5 rounded-lg border border-white/10 cursor-pointer"
-                >
-                  {customPolygon ? 'Редагувати зону' : 'Накреслити зону'}
-                </button>
-                {customPolygon && (
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('crowd_spawn_polygon');
-                      setCustomPolygon(null);
-                    }}
-                    className="bg-red-950/40 hover:bg-red-900/50 active:scale-[0.97] transition-all text-red-300 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-red-900/30 cursor-pointer"
-                  >
-                    Скинути зону
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (tempPoints.length >= 3) {
-                      localStorage.setItem('crowd_spawn_polygon', JSON.stringify(tempPoints));
-                      setCustomPolygon(tempPoints);
-                      setIsDrawingMode(false);
-                    }
-                  }}
-                  disabled={tempPoints.length < 3}
-                  className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:hover:bg-green-600 active:scale-[0.97] transition-all text-white text-[10px] font-bold px-3 py-1.5 rounded-lg border border-green-500/20 cursor-pointer"
-                >
-                  Зберегти
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setTempPoints([]);
-                  }}
-                  className="bg-zinc-800 hover:bg-zinc-700 active:scale-[0.97] transition-all text-zinc-300 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-zinc-700 cursor-pointer"
-                >
-                  Очистити
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsDrawingMode(false);
-                    setTempPoints([]);
-                  }}
-                  className="bg-zinc-950 hover:bg-zinc-900 active:scale-[0.97] transition-all text-zinc-400 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-zinc-800 cursor-pointer"
-                >
-                  Скасувати
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="pointer-events-auto bg-zinc-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-zinc-800 text-[10px] font-mono text-zinc-500 uppercase select-none">
-          {isDrawingMode ? 'Drawing Mode' : 'Render: WebGL 2D'}
+      {/* Center Avatar HTML Overlay */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-auto">
+        <div className="relative w-[92px] h-[92px] rounded-full flex items-center justify-center bg-white border border-slate-200 shadow-lg">
+          {!hasError && imageSrc ? (
+            <div className="w-[80px] h-[80px] rounded-full border-[3px] border-slate-800 overflow-hidden bg-slate-100 flex items-center justify-center">
+              <img 
+                src={imageSrc} 
+                alt="X profile avatar" 
+                className="w-full h-full object-cover select-none"
+                onError={handleImageError}
+              />
+            </div>
+          ) : (
+            <div className="w-[80px] h-[80px] rounded-full border-[3px] border-amber-600 bg-[#ffd700] flex items-center justify-center shadow-inner">
+              <svg className="w-10 h-10 text-amber-600 fill-current" viewBox="0 0 24 24">
+                <path d="M12 .587l3.668 7.431 8.2 1.19-5.934 5.784 1.4 8.168L12 18.896l-7.334 3.857 1.4-8.168L.132 9.208l8.2-1.19z" />
+              </svg>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* SVG Canvas for interactive drawing overlay */}
-      {isDrawingMode && (
-        <svg
-          onClick={(e) => {
-            if (!containerRef.current) return;
-            const rect = containerRef.current.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
-            setTempPoints([...tempPoints, { x, y }]);
-          }}
-          className="absolute inset-0 w-full h-full z-30 cursor-crosshair select-none bg-black/40"
-        >
-          {/* Render polygon preview */}
-          {tempPoints.length > 0 && (
-            <>
-              {tempPoints.length >= 3 && (
-                <polygon
-                  points={tempPoints.map(p => `${p.x * dimensions.width},${p.y * dimensions.height}`).join(' ')}
-                  fill="rgba(34, 197, 94, 0.25)"
-                  stroke="#22c55e"
-                  strokeWidth="2.5"
-                  strokeDasharray="4 4"
-                />
-              )}
-              {tempPoints.map((p, idx) => (
-                <g key={idx}>
-                  {idx > 0 && (
-                    <line
-                      x1={tempPoints[idx - 1].x * dimensions.width}
-                      y1={tempPoints[idx - 1].y * dimensions.height}
-                      x2={p.x * dimensions.width}
-                      y2={p.y * dimensions.height}
-                      stroke="#22c55e"
-                      strokeWidth="2"
-                    />
-                  )}
-                  {idx === tempPoints.length - 1 && tempPoints.length > 1 && (
-                    <line
-                      x1={p.x * dimensions.width}
-                      y1={p.y * dimensions.height}
-                      x2={tempPoints[0].x * dimensions.width}
-                      y2={tempPoints[0].y * dimensions.height}
-                      stroke="#22c55e"
-                      strokeWidth="1.5"
-                      strokeDasharray="2 2"
-                    />
-                  )}
-                  <circle
-                    cx={p.x * dimensions.width}
-                    cy={p.y * dimensions.height}
-                    r="5"
-                    fill="#22c55e"
-                    stroke="#ffffff"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    x={p.x * dimensions.width + 8}
-                    y={p.y * dimensions.height + 4}
-                    fill="#ffffff"
-                    fontSize="10"
-                    fontWeight="bold"
-                    className="select-none pointer-events-none drop-shadow"
-                  >
-                    {idx + 1}
-                  </text>
-                </g>
-              ))}
-            </>
-          )}
-          
-          {tempPoints.length === 0 && (
-            <text
-              x="50%"
-              y="50%"
-              textAnchor="middle"
-              fill="#ffffff"
-              fontSize="12"
-              fontWeight="600"
-              className="select-none pointer-events-none drop-shadow-md uppercase tracking-wide"
-            >
-              Клікайте по полям, щоб накреслити власну зону спавну (мінімум 3 точки)
-            </text>
-          )}
-        </svg>
-      )}
+      {/* Informational Overlay */}
+      <div className="absolute top-6 left-6 right-6 z-40 flex justify-between items-start pointer-events-none">
+        <div className="pointer-events-auto select-none bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-zinc-200 shadow-md flex flex-col gap-1 max-w-[280px]">
+          <span className="text-[9px] uppercase tracking-[0.25em] text-indigo-600 font-bold">Світловий графік аудиторії</span>
+          <h3 className="text-xs font-semibold text-zinc-800 mt-0.5">Сітка підписників ({crowdCount} осіб)</h3>
+        </div>
+
+        <div className="pointer-events-auto bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-zinc-200 text-[10px] font-mono text-zinc-500 uppercase select-none">
+          Render: PixiJS Grid
+        </div>
+      </div>
     </div>
   );
 }
