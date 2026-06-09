@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Application, Container, Graphics, Sprite, Texture, Assets } from 'pixi.js';
 
 interface CrowdVisualizationProps {
@@ -75,6 +75,48 @@ export default function CrowdVisualization({
 
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
+
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [showMagnifier, setShowMagnifier] = useState(false);
+  const magnifierCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current || !pixiAppRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setMousePos({ x, y });
+
+    const magnifierCanvas = magnifierCanvasRef.current;
+    if (magnifierCanvas) {
+      const ctx = magnifierCanvas.getContext('2d');
+      const mainCanvas = pixiAppRef.current.canvas;
+      if (ctx && mainCanvas) {
+        const resolution = window.devicePixelRatio || 1;
+        const size = 200;
+        const zoom = 2;
+        const sourceSize = size / zoom;
+
+        const sx = (x - sourceSize / 2) * resolution;
+        const sy = (y - sourceSize / 2) * resolution;
+        const sWidth = sourceSize * resolution;
+        const sHeight = sourceSize * resolution;
+
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(
+          mainCanvas,
+          sx,
+          sy,
+          sWidth,
+          sHeight,
+          0,
+          0,
+          size,
+          size
+        );
+      }
+    }
+  };
 
   useEffect(() => {
     if (avatarUrl) {
@@ -193,6 +235,7 @@ export default function CrowdVisualization({
         antialias: true,
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
+        preserveDrawingBuffer: true,
       });
 
       if (!active) {
@@ -318,7 +361,8 @@ export default function CrowdVisualization({
     cells.sort((a, b) => a.dist - b.dist);
 
     // Skip cells within center cutout area (avatarRadius)
-    const avatarRadius = 65; 
+    const avatarDiameter = crowdCount > 50000 ? 112 : crowdCount > 10000 ? 100 : crowdCount > 1000 ? 90 : 80;
+    const avatarRadius = (avatarDiameter / 2) + Math.max(4, cellWidth * 0.7); 
     const validCells = cells.filter((cell) => cell.dist >= avatarRadius);
 
     const actualCount = Math.min(crowdCount, validCells.length);
@@ -451,41 +495,69 @@ export default function CrowdVisualization({
   return (
     <div 
       ref={containerRef} 
-      className={`relative w-full min-h-[400px] h-full bg-white rounded-[2rem] border border-zinc-200 overflow-hidden shadow-xl flex flex-col justify-end ${className}`}
+      className={`relative w-full min-h-[400px] h-full bg-white rounded-[2rem] border border-zinc-200 overflow-hidden shadow-xl flex flex-col justify-end cursor-crosshair ${className}`}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setShowMagnifier(true)}
+      onMouseLeave={() => setShowMagnifier(false)}
     >
       {/* Center Avatar HTML Overlay */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-auto">
-        <div className="relative w-[92px] h-[92px] rounded-full flex items-center justify-center bg-white border border-slate-200 shadow-lg">
-          {!hasError && imageSrc ? (
-            <div className="w-[80px] h-[80px] rounded-full border-[3px] border-slate-800 overflow-hidden bg-slate-100 flex items-center justify-center">
-              <img 
-                src={imageSrc} 
-                alt="X profile avatar" 
-                className="w-full h-full object-cover select-none"
-                onError={handleImageError}
-              />
+      {(() => {
+        const avatarDiameter = crowdCount > 50000 ? 112 : crowdCount > 10000 ? 100 : crowdCount > 1000 ? 90 : 80;
+        return (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-auto">
+            <div 
+              className="rounded-full overflow-hidden bg-slate-100 flex items-center justify-center shadow-lg transition-all duration-300"
+              style={{ width: `${avatarDiameter}px`, height: `${avatarDiameter}px` }}
+            >
+              {!hasError && imageSrc ? (
+                <img 
+                  src={imageSrc} 
+                  alt="X profile avatar" 
+                  className="w-full h-full object-cover select-none"
+                  onError={handleImageError}
+                />
+              ) : (
+                <div 
+                  className="w-full h-full bg-[#ffd700] flex items-center justify-center shadow-inner"
+                >
+                  <svg className="w-10 h-10 text-amber-600 fill-current" viewBox="0 0 24 24">
+                    <path d="M12 .587l3.668 7.431 8.2 1.19-5.934 5.784 1.4 8.168L12 18.896l-7.334 3.857 1.4-8.168L.132 9.208l8.2-1.19z" />
+                  </svg>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="w-[80px] h-[80px] rounded-full border-[3px] border-amber-600 bg-[#ffd700] flex items-center justify-center shadow-inner">
-              <svg className="w-10 h-10 text-amber-600 fill-current" viewBox="0 0 24 24">
-                <path d="M12 .587l3.668 7.431 8.2 1.19-5.934 5.784 1.4 8.168L12 18.896l-7.334 3.857 1.4-8.168L.132 9.208l8.2-1.19z" />
-              </svg>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        );
+      })()}
 
-      {/* Informational Overlay */}
-      <div className="absolute top-6 left-6 right-6 z-40 flex justify-between items-start pointer-events-none">
-        <div className="pointer-events-auto select-none bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-zinc-200 shadow-md flex flex-col gap-1 max-w-[280px]">
-          <span className="text-[9px] uppercase tracking-[0.25em] text-indigo-600 font-bold">Світловий графік аудиторії</span>
-          <h3 className="text-xs font-semibold text-zinc-800 mt-0.5">Сітка підписників ({crowdCount} осіб)</h3>
+      {/* Magnifier Glass Overlay */}
+      {showMagnifier && (
+        <div
+          className="absolute rounded-full border-[4px] border-white shadow-[0_15px_35px_rgba(0,0,0,0.3),inset_0_2px_4px_rgba(255,255,255,0.2)] pointer-events-none z-40 overflow-hidden"
+          style={{
+            width: '200px',
+            height: '200px',
+            left: `${mousePos.x - 100}px`,
+            top: `${mousePos.y - 100}px`,
+            boxShadow: '0 15px 35px rgba(0,0,0,0.3), inset 0 0 20px rgba(0,0,0,0.1)',
+          }}
+        >
+          <canvas
+            ref={magnifierCanvasRef}
+            width={200}
+            height={200}
+            className="w-full h-full block"
+          />
+          {/* Lens Glass reflection */}
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 60%, rgba(0,0,0,0.05) 100%)',
+              border: '1px solid rgba(255,255,255,0.2)',
+            }}
+          />
         </div>
-
-        <div className="pointer-events-auto bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-zinc-200 text-[10px] font-mono text-zinc-500 uppercase select-none">
-          Render: PixiJS Grid
-        </div>
-      </div>
+      )}
     </div>
   );
 }
