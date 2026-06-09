@@ -90,30 +90,64 @@ export default function CrowdVisualization({
     const magnifierCanvas = magnifierCanvasRef.current;
     if (magnifierCanvas) {
       const ctx = magnifierCanvas.getContext('2d');
-      const mainCanvas = pixiAppRef.current.canvas;
-      if (ctx && mainCanvas) {
-        const resolution = window.devicePixelRatio || 1;
-        const size = 200;
-        const zoom = 2;
-        const sourceSize = size / zoom;
+      if (ctx) {
+        const size = 200; // Magnifier circle size
+        const centerX = size / 2;
+        const centerY = size / 2;
 
-        const sx = (x - sourceSize / 2) * resolution;
-        const sy = (y - sourceSize / 2) * resolution;
-        const sWidth = sourceSize * resolution;
-        const sHeight = sourceSize * resolution;
+        // Dynamic zoom factor based on crowd count
+        const baseZoom = 3.5;
+        const zoom = crowdCount > 10000 ? 5.5 : crowdCount > 1000 ? 4.5 : baseZoom;
+
+        // Parallax speed-up effect inside the magnifier:
+        // When there are more elements, they move faster inside the lens
+        const motionMultiplier = crowdCount > 10000 ? 1.45 : crowdCount > 1000 ? 1.25 : 1.0;
 
         ctx.clearRect(0, 0, size, size);
-        ctx.drawImage(
-          mainCanvas,
-          sx,
-          sy,
-          sWidth,
-          sHeight,
-          0,
-          0,
-          size,
-          size
-        );
+
+        // Clip to a circle
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, size / 2 - 2, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Fill background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+
+        // Render grid/dots manually in high resolution
+        const members = crowdMembersRef.current;
+        const radiusLimit = (size / 2) / (zoom * motionMultiplier);
+
+        for (const m of members) {
+          const dx = m.gridX - x;
+          const dy = m.gridY - y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < radiusLimit + 10) {
+            const lx = centerX + dx * zoom * motionMultiplier;
+            const ly = centerY + dy * zoom * motionMultiplier;
+
+            // Draw a high-resolution representation (circle with capsule) representing the person
+            const dotSize = Math.max(4, m.sprite.width * zoom * 0.95);
+            const drawColor = m.color === '#ffffff' ? '#475569' : m.color; // Avoid white on white
+
+            ctx.beginPath();
+            ctx.fillStyle = drawColor;
+            
+            // Draw head
+            const headRadius = dotSize * 0.28;
+            ctx.arc(lx, ly - dotSize * 0.35, headRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw body capsule
+            ctx.beginPath();
+            ctx.roundRect(lx - dotSize * 0.35, ly - dotSize * 0.1, dotSize * 0.7, dotSize * 0.8, dotSize * 0.25);
+            ctx.fill();
+          }
+        }
+
+        ctx.restore();
       }
     }
   };
