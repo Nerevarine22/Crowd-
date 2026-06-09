@@ -133,16 +133,29 @@ export default function CrowdVisualization({
             const dotSize = Math.max(4, m.sprite.width * zoom * 0.95);
             const drawColor = m.color === '#ffffff' ? '#475569' : m.color; // Avoid white on white
 
-            // Check if we have an image element source from Pixi texture
-            const imgElement = m.texture?.source?.source;
-            if (imgElement && (imgElement instanceof HTMLImageElement || imgElement instanceof HTMLCanvasElement || imgElement instanceof ImageBitmap)) {
-              ctx.drawImage(
-                imgElement,
-                lx - dotSize * 0.5,
-                ly - dotSize,
-                dotSize,
-                dotSize
-              );
+            // Try drawing from multiple possible sources inside Pixi texture
+            const possibleSources = [
+              m.texture?.source?.resource,
+              m.texture?.source?.source,
+              m.texture?.source,
+              m.texture
+            ];
+            
+            let drawSuccess = false;
+            for (const src of possibleSources) {
+              if (src) {
+                try {
+                  ctx.drawImage(src as any, lx - dotSize * 0.5, ly - dotSize, dotSize, dotSize);
+                  drawSuccess = true;
+                  break;
+                } catch (e) {
+                  // ignore and try next source
+                }
+              }
+            }
+
+            if (drawSuccess) {
+              // Successfully drawn
             } else {
               ctx.beginPath();
               ctx.fillStyle = drawColor;
