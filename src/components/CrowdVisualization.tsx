@@ -18,6 +18,7 @@ interface CrowdMember {
   gridY: number;
   color: string;
   isHighlighted?: boolean;
+  texture?: Texture;
 }
 
 // Preset color palette for light theme grid aesthetics
@@ -128,22 +129,34 @@ export default function CrowdVisualization({
             const lx = centerX + dx * zoom * motionMultiplier;
             const ly = centerY + dy * zoom * motionMultiplier;
 
-            // Draw a high-resolution representation (circle with capsule) representing the person
+            // Draw a high-resolution representation (custom photo image or vector silhouette) representing the person
             const dotSize = Math.max(4, m.sprite.width * zoom * 0.95);
             const drawColor = m.color === '#ffffff' ? '#475569' : m.color; // Avoid white on white
 
-            ctx.beginPath();
-            ctx.fillStyle = drawColor;
-            
-            // Draw head
-            const headRadius = dotSize * 0.28;
-            ctx.arc(lx, ly - dotSize * 0.35, headRadius, 0, Math.PI * 2);
-            ctx.fill();
+            // Check if we have an image element source from Pixi texture
+            const imgElement = m.texture?.source?.source;
+            if (imgElement && (imgElement instanceof HTMLImageElement || imgElement instanceof HTMLCanvasElement || imgElement instanceof ImageBitmap)) {
+              ctx.drawImage(
+                imgElement,
+                lx - dotSize * 0.5,
+                ly - dotSize,
+                dotSize,
+                dotSize
+              );
+            } else {
+              ctx.beginPath();
+              ctx.fillStyle = drawColor;
+              
+              // Draw head
+              const headRadius = dotSize * 0.28;
+              ctx.arc(lx, ly - dotSize * 0.35, headRadius, 0, Math.PI * 2);
+              ctx.fill();
 
-            // Draw body capsule
-            ctx.beginPath();
-            ctx.roundRect(lx - dotSize * 0.35, ly - dotSize * 0.1, dotSize * 0.7, dotSize * 0.8, dotSize * 0.25);
-            ctx.fill();
+              // Draw body capsule
+              ctx.beginPath();
+              ctx.roundRect(lx - dotSize * 0.35, ly - dotSize * 0.1, dotSize * 0.7, dotSize * 0.8, dotSize * 0.25);
+              ctx.fill();
+            }
           }
         }
 
@@ -454,6 +467,7 @@ export default function CrowdVisualization({
         gridX: cell.x,
         gridY: cell.y,
         color: isDot ? '#ffffff' : (isCustomSprite ? '#ffffff' : PALETTE[Math.floor(Math.random() * PALETTE.length)]),
+        texture: texture,
       });
     }
 
