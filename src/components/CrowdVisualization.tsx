@@ -400,9 +400,11 @@ export default function CrowdVisualization({
     const startX = (width - (cols - 1) * cellWidth) / 2;
     const startY = (height - (rows - 1) * cellHeight) / 2;
 
-    // Generate grid points
+    // Generate grid points with radial density warp (more dense at the center, sparser at the edges)
     const cells: { x: number; y: number; dist: number }[] = [];
     const isDot = false; // Always render stylized person silhouettes/photos instead of color dots
+    const maxDist = Math.sqrt((width / 2) * (width / 2) + (height / 2) * (height / 2)) || 1;
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const x = startX + c * cellWidth;
@@ -413,7 +415,25 @@ export default function CrowdVisualization({
         const dx = x - centerX;
         const dy = cellCenterY - centerY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        cells.push({ x, y, dist });
+        
+        if (dist > 0) {
+          const t = dist / maxDist;
+          // Power greater than 1 compresses coordinates toward the center (e.g. 1.35)
+          const warpedT = Math.pow(t, 1.35);
+          const newDist = warpedT * maxDist;
+          
+          const rx = centerX + (dx / dist) * newDist;
+          const ry = centerY + (dy / dist) * newDist;
+          const rCenterY = isDot ? ry : (ry - cellHeight / 2);
+          
+          const newDx = rx - centerX;
+          const newDy = rCenterY - centerY;
+          const warpedDist = Math.sqrt(newDx * newDx + newDy * newDy);
+          
+          cells.push({ x: rx, y: ry, dist: warpedDist });
+        } else {
+          cells.push({ x, y, dist });
+        }
       }
     }
 
