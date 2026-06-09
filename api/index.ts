@@ -52,6 +52,12 @@ app.post('/api/twitter-info', async (req, res) => {
       return res.status(400).json({ error: 'Username is required' });
     }
 
+    if (!process.env.APIFY_API_TOKEN) {
+      return res.status(500).json({ 
+        error: 'На бекенді Vercel не налаштовано Apify токен. Будь ласка, додайте змінну оточення APIFY_API_TOKEN у налаштуваннях вашого проекту на Vercel (Settings -> Environment Variables) та запустіть передеплой.' 
+      });
+    }
+
     // Prepare the actor input with usernames parameter
     const actorInput = {
       usernames: [username],
