@@ -92,7 +92,15 @@ export default function CrowdVisualization({
     if (magnifierCanvas) {
       const ctx = magnifierCanvas.getContext('2d');
       if (ctx) {
-        const size = 200; // Magnifier circle size
+        const resolution = window.devicePixelRatio || 1;
+        const size = 200; // Magnifier circle CSS size
+        
+        // Ensure high-DPI canvas buffer resolution
+        if (magnifierCanvas.width !== size * resolution) {
+          magnifierCanvas.width = size * resolution;
+          magnifierCanvas.height = size * resolution;
+        }
+
         const centerX = size / 2;
         const centerY = size / 2;
 
@@ -104,7 +112,15 @@ export default function CrowdVisualization({
         // When there are more elements, they move faster inside the lens
         const motionMultiplier = crowdCount > 10000 ? 1.45 : crowdCount > 1000 ? 1.25 : 1.0;
 
-        ctx.clearRect(0, 0, size, size);
+        ctx.clearRect(0, 0, size * resolution, size * resolution);
+
+        // Save and apply high-DPI scaling
+        ctx.save();
+        ctx.scale(resolution, resolution);
+
+        // Apply high-quality image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
 
         // Clip to a circle
         ctx.save();
@@ -129,8 +145,11 @@ export default function CrowdVisualization({
             const lx = centerX + dx * zoom * motionMultiplier;
             const ly = centerY + dy * zoom * motionMultiplier;
 
-            // Draw a high-resolution representation (custom photo image or vector silhouette) representing the person
+            // Compute correct unsquished height using original texture/sprite aspect ratio
             const dotSize = Math.max(4, m.sprite.width * zoom * 0.95);
+            const aspect = m.sprite.height / m.sprite.width || 1.25;
+            const drawHeight = dotSize * aspect;
+            
             const drawColor = m.color === '#ffffff' ? '#475569' : m.color; // Avoid white on white
 
             // Try drawing from multiple possible sources inside Pixi texture
@@ -145,7 +164,7 @@ export default function CrowdVisualization({
             for (const src of possibleSources) {
               if (src) {
                 try {
-                  ctx.drawImage(src as any, lx - dotSize * 0.5, ly - dotSize, dotSize, dotSize);
+                  ctx.drawImage(src as any, lx - dotSize * 0.5, ly - drawHeight, dotSize, drawHeight);
                   drawSuccess = true;
                   break;
                 } catch (e) {
@@ -162,18 +181,19 @@ export default function CrowdVisualization({
               
               // Draw head
               const headRadius = dotSize * 0.28;
-              ctx.arc(lx, ly - dotSize * 0.35, headRadius, 0, Math.PI * 2);
+              ctx.arc(lx, ly - drawHeight * 0.75, headRadius, 0, Math.PI * 2);
               ctx.fill();
 
               // Draw body capsule
               ctx.beginPath();
-              ctx.roundRect(lx - dotSize * 0.35, ly - dotSize * 0.1, dotSize * 0.7, dotSize * 0.8, dotSize * 0.25);
+              ctx.roundRect(lx - dotSize * 0.35, ly - drawHeight * 0.45, dotSize * 0.7, drawHeight * 0.5, dotSize * 0.25);
               ctx.fill();
             }
           }
         }
 
-        ctx.restore();
+        ctx.restore(); // for circle clip
+        ctx.restore(); // for high-DPI scaling
       }
     }
   };
