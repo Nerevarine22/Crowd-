@@ -63,23 +63,50 @@ app.post('/api/twitter-info', async (req, res) => {
       usernames: [username],
     };
 
-    // Run the Apify twitter profile scraper
-    const run = await client.actor("dead00/twitter-profile-scraper-no-cookies").call(actorInput);
-    const { items } = await client.dataset(run.defaultDatasetId).listItems();
+    let followersCount: number | null = null;
+    let avatarUrl = '';
+    let success = false;
 
-    if (!items || items.length === 0) {
-      return res.status(404).json({ error: 'User not found or no data returned.' });
+    // 1. Try Apify scraper
+    try {
+      const run = await client.actor("dead00/twitter-profile-scraper-no-cookies").call(actorInput);
+      const { items } = await client.dataset(run.defaultDatasetId).listItems();
+
+      if (items && items.length > 0) {
+        const userProfile = items[0] as any;
+        if (userProfile.success) {
+          followersCount = userProfile.followers_count || 0;
+          avatarUrl = userProfile.profile_image_url || '';
+          success = true;
+        }
+      }
+    } catch (scraperError) {
+      console.warn('Apify scraper failed, trying fallback...', scraperError);
     }
 
-    const userProfile = items[0] as any;
-    
-    if (!userProfile.success) {
-      return res.status(404).json({ error: 'Failed to scrape user data.' });
+    // 2. Fallback to Twitter Syndication Widget
+    if (!success) {
+      try {
+        const fallbackUrl = `https://cdn.syndication.twimg.com/widgets/followbutton/info.json?screen_names=${encodeURIComponent(username)}`;
+        const response = await fetch(fallbackUrl);
+        if (response.ok) {
+          const data = await response.json();
+          const user = Array.isArray(data) ? data[0] : null;
+          if (user && typeof user.followers_count === 'number') {
+            followersCount = user.followers_count;
+            avatarUrl = `https://unavatar.io/x/${encodeURIComponent(username)}`;
+            success = true;
+            console.log('Successfully fetched profile using syndication fallback for', username);
+          }
+        }
+      } catch (fallbackError) {
+        console.error('Syndication fallback failed:', fallbackError);
+      }
     }
-    
-    // Select only followers count and profile photo
-    const followersCount = userProfile.followers_count || 0;
-    const avatarUrl = userProfile.profile_image_url || '';
+
+    if (!success || followersCount === null) {
+      return res.status(404).json({ error: 'Failed to scrape user data. Please check the username or try again later.' });
+    }
 
     res.json({
       followersCount,
