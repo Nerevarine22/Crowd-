@@ -674,15 +674,22 @@ export default function App() {
         {/* ═══════════════════════════════════════════════════════════
             RESULT
         ═══════════════════════════════════════════════════════════ */}
-        {loadingStep === 'completed' && (
-          <div className="w-full px-6 py-12 flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-500 ease-out">
+        {(loadingStep === 'loading' || loadingStep === 'completed') && (
+          <div 
+            className="w-full px-6 py-12 flex flex-col items-center text-center transition-all duration-500 ease-out"
+            style={
+              loadingStep === 'loading'
+                ? { position: 'absolute', opacity: 0, pointerEvents: 'none', top: '-9999px', left: '-9999px', visibility: 'hidden' }
+                : { position: 'relative', opacity: 1, pointerEvents: 'auto', visibility: 'visible' }
+            }
+          >
 
             <div className="mb-12">
               <h2
                 className="text-[#111111] tracking-tight mb-4 font-black"
                 style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)', fontFamily: '"Inter Tight","Inter",sans-serif' }}
               >
-                <CountUp end={followersCountVal} /> Followers
+                {loadingStep === 'completed' ? <CountUp end={followersCountVal} /> : 0} Followers
               </h2>
               <p className="text-xl text-[#6B7280] max-w-xl mx-auto font-medium tracking-tight">
                 {getResultStatement(followersCountVal)}
