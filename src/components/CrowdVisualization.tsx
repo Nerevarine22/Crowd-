@@ -355,6 +355,7 @@ export default function CrowdVisualization({
             tex.source.autoGenerateMipmaps = true;
             tex.source.scaleMode = 'linear';
             tex.source.style.mipmapMode = 'on';
+            tex.source.style.anisotropy = 8;
           }
           loadedTextures.push(tex);
         } catch (e) {
