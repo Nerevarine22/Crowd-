@@ -67,24 +67,54 @@ app.post('/api/twitter-info', async (req, res) => {
     let avatarUrl = '';
     let success = false;
 
-    // 1. Try Apify scraper
+    // 1. Try Direct public page HTML scraping (Fast & Free)
     try {
-      const run = await client.actor("dead00/twitter-profile-scraper-no-cookies").call(actorInput);
-      const { items } = await client.dataset(run.defaultDatasetId).listItems();
-
-      if (items && items.length > 0) {
-        const userProfile = items[0] as any;
-        if (userProfile.success) {
-          followersCount = userProfile.followers_count || 0;
-          avatarUrl = userProfile.profile_image_url || '';
+      const targetUrl = `https://x.com/${encodeURIComponent(username)}`;
+      const response = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        }
+      });
+      if (response.ok) {
+        const html = await response.text();
+        const followersMatch = html.match(/followers:\s*(\d+)/i) || html.match(/\"followers\":\s*(\d+)/i);
+        const avatarMatch = html.match(/<meta\s+property=\"og:image\"\s+content=\"([^\"]+)\"/i) || 
+                            html.match(/<meta\s+name=\"twitter:image\"\s+content=\"([^\"]+)\"/i) ||
+                            html.match(/avatarUrl\":\"([^\"]+)\"/i);
+                            
+        if (followersMatch) {
+          followersCount = parseInt(followersMatch[1], 10);
+          avatarUrl = avatarMatch ? avatarMatch[1] : `https://unavatar.io/x/${encodeURIComponent(username)}`;
           success = true;
+          console.log(`[Direct Scrape] Success for ${username}: ${followersCount} followers`);
         }
       }
-    } catch (scraperError) {
-      console.warn('Apify scraper failed, trying fallback...', scraperError);
+    } catch (directError) {
+      console.warn('[Direct Scrape] Failed, trying Apify...', directError);
     }
 
-    // 2. Fallback to Twitter Syndication Widget
+    // 2. Fallback to Apify scraper
+    if (!success && process.env.APIFY_API_TOKEN) {
+      try {
+        const run = await client.actor("dead00/twitter-profile-scraper-no-cookies").call(actorInput);
+        const { items } = await client.dataset(run.defaultDatasetId).listItems();
+
+        if (items && items.length > 0) {
+          const userProfile = items[0] as any;
+          if (userProfile.success) {
+            followersCount = userProfile.followers_count || 0;
+            avatarUrl = userProfile.profile_image_url || '';
+            success = true;
+            console.log(`[Apify Scrape] Success for ${username}`);
+          }
+        }
+      } catch (scraperError) {
+        console.warn('[Apify Scrape] Failed, trying Syndication...', scraperError);
+      }
+    }
+
+    // 3. Fallback to Twitter Syndication Widget
     if (!success) {
       try {
         const fallbackUrl = `https://cdn.syndication.twimg.com/widgets/followbutton/info.json?screen_names=${encodeURIComponent(username)}`;
@@ -96,11 +126,11 @@ app.post('/api/twitter-info', async (req, res) => {
             followersCount = user.followers_count;
             avatarUrl = `https://unavatar.io/x/${encodeURIComponent(username)}`;
             success = true;
-            console.log('Successfully fetched profile using syndication fallback for', username);
+            console.log(`[Syndication Scrape] Success for ${username}`);
           }
         }
       } catch (fallbackError) {
-        console.error('Syndication fallback failed:', fallbackError);
+        console.error('[Syndication Scrape] Failed:', fallbackError);
       }
     }
 
